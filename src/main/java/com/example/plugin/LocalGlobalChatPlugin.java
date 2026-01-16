@@ -1,36 +1,42 @@
 package com.example.plugin;
 
 import com.hypixel.hytale.server.core.Message;
-import com.hypixel.hytale.server.core.command.system.AbstractCommand;
-import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.event.events.player.PlayerChatEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.lang.reflect.Field;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 public class LocalGlobalChatPlugin extends JavaPlugin {
 
-    private static final double LOCAL_RADIUS = 50.0;
-    private static final double LOCAL_RADIUS_SQ = LOCAL_RADIUS * LOCAL_RADIUS;
+    // =========================
+    // Persistência
+    // =========================
+    private static final String CONFIG_FILE_NAME = "localglobalchat.properties";
+    private static final String PROP_LOCAL_RADIUS = "localRadius";
+
+    // =========================
+    // Raio configurável do chat local (default: 50 blocos)
+    // =========================
+    private static volatile double localRadius = 50.0;
+    private static volatile double localRadiusSq = localRadius * localRadius;
 
     // TinyMessage/TinyMsg (se estiver instalado no servidor)
     private static final String TINY_GLOBAL = "green";
-    private static final String TINY_LOCAL  = "yellow";
-    private static final String TINY_TEXT   = "white";
-
-    // Permissão do /chatdebug (admin)
-    private static final String PERM_CHATDEBUG = "hytale.command.chatdebug";
+    private static final String TINY_LOCAL = "yellow";
+    private static final String TINY_TEXT = "white";
 
     // modo do chat por jogador
     private final Map<UUID, ChatMode> chatModes = new ConcurrentHashMap<>();
@@ -44,11 +50,16 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
     @Override
     protected void setup() {
+        // ✅ carrega o raio salvo antes de registrar comandos e antes do chat rodar
+        loadLocalRadiusFromDisk();
+
         getCommandRegistry().registerCommand(new GCommand(this));
         getCommandRegistry().registerCommand(new LCommand(this));
+        getCommandRegistry().registerCommand(new MsgCommand());
         getCommandRegistry().registerCommand(new ChatDebugCommand(this));
+        getCommandRegistry().registerCommand(new LocalRadiusCommand(this));
 
-        // Registro do chat via reflection (evita erros de generics/assinaturas)
+        // Registro do chat via reflection
         registerEventListener(PlayerChatEvent.class, ev -> onChat((PlayerChatEvent) ev));
 
         // (Opcional) tenta resetar para LOCAL quando o jogador entrar (se existir evento)
@@ -56,27 +67,129 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // Chat local como padrão
+    // API usada pelos comandos
     // =========================================================
 
-    private ChatMode getMode(UUID uuid) {
+    ChatMode getMode(UUID uuid) {
         return chatModes.getOrDefault(uuid, ChatMode.LOCAL);
     }
 
-    private void setMode(UUID uuid, ChatMode mode) {
+    void setMode(UUID uuid, ChatMode mode) {
         chatModes.put(uuid, mode);
     }
 
-    private boolean isDebug(UUID uuid) {
+    boolean isDebug(UUID uuid) {
         return debugModes.getOrDefault(uuid, false);
     }
 
-    private void toggleDebug(UUID uuid) {
+    void toggleDebug(UUID uuid) {
         debugModes.put(uuid, !isDebug(uuid));
     }
 
+    // persiste no disco
+    void setLocalRadius(int blocks) {
+        applyLocalRadius(blocks);
+        saveLocalRadiusToDisk();
+    }
+
+    int getLocalRadiusInt() {
+        return (int) Math.round(localRadius);
+    }
+
     // =========================================================
-    // Registro de eventos via reflection (compatível entre builds)
+    // Implementação interna do raio
+    // =========================================================
+
+    private static void applyLocalRadius(int blocks) {
+        if (blocks < 1) blocks = 1;
+        if (blocks > 1000) blocks = 1000;
+
+        localRadius = blocks;
+        localRadiusSq = localRadius * localRadius;
+    }
+
+    // =========================================================
+    // Persistência em arquivo
+    // =========================================================
+
+    private void loadLocalRadiusFromDisk() {
+        try {
+            Path cfg = getConfigPath();
+            if (!Files.exists(cfg)) {
+                // sem config -> mantém default
+                return;
+            }
+
+            Properties p = new Properties();
+            try (InputStream in = Files.newInputStream(cfg)) {
+                p.load(in);
+            }
+
+            String raw = p.getProperty(PROP_LOCAL_RADIUS);
+            if (raw == null || raw.trim().isEmpty()) return;
+
+            int blocks = Integer.parseInt(raw.trim());
+            applyLocalRadius(blocks);
+
+            System.out.println("[LocalGlobalChat] localRadius carregado: " + getLocalRadiusInt());
+        } catch (Throwable t) {
+            System.err.println("[LocalGlobalChat] ERRO ao carregar localRadius. Usando default 50.");
+        }
+    }
+
+    private void saveLocalRadiusToDisk() {
+        try {
+            Path cfg = getConfigPath();
+            Files.createDirectories(cfg.getParent());
+
+            Properties p = new Properties();
+
+            // se já existir, preserva outras chaves futuras
+            if (Files.exists(cfg)) {
+                try (InputStream in = Files.newInputStream(cfg)) {
+                    p.load(in);
+                } catch (Throwable ignored) { }
+            }
+
+            p.setProperty(PROP_LOCAL_RADIUS, String.valueOf(getLocalRadiusInt()));
+
+            try (OutputStream out = Files.newOutputStream(cfg)) {
+                p.store(out, "LocalGlobalChat config");
+            }
+
+            System.out.println("[LocalGlobalChat] localRadius salvo: " + getLocalRadiusInt());
+        } catch (Throwable t) {
+            System.err.println("[LocalGlobalChat] ERRO ao salvar localRadius (sem permissao de escrita?).");
+        }
+    }
+
+    private Path getConfigPath() {
+        return getDataDirSafe().resolve(CONFIG_FILE_NAME);
+    }
+
+    /**
+     * Tenta achar uma pasta de dados do plugin via reflection.
+     * Se não achar, usa: ./plugins/LocalGlobalChat/
+     */
+    private Path getDataDirSafe() {
+        // tenta métodos comuns no JavaPlugin (dependendo do build)
+        Object r = invokeAny(this,
+                "getDataFolder",
+                "getDataDirectory",
+                "getPluginDirectory",
+                "getPluginFolder"
+        );
+
+        if (r instanceof Path path) return path;
+        if (r instanceof java.io.File f) return f.toPath();
+        if (r instanceof String s && !s.trim().isEmpty()) return Paths.get(s.trim());
+
+        // fallback bem seguro
+        return Paths.get("plugins", "LocalGlobalChat");
+    }
+
+    // =========================================================
+    // Registro de eventos via reflection
     // =========================================================
 
     private void registerEventListener(Class<?> eventClass, Consumer<Object> handler) {
@@ -230,7 +343,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
                 double dy = getY(target) - y0;
                 double dz = getZ(target) - z0;
 
-                return (dx * dx + dy * dy + dz * dz) > LOCAL_RADIUS_SQ;
+                return (dx * dx + dy * dy + dz * dz) > localRadiusSq;
             });
         }
 
@@ -258,37 +371,17 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         String tag = (mode == ChatMode.LOCAL) ? "[L] " : "[G] ";
         String col = (mode == ChatMode.LOCAL) ? TINY_LOCAL : TINY_GLOBAL;
 
-        // evita jogador quebrar tags usando "<...>"
-        String safeUser = tinySafe(username);
-        String safeMsg  = tinySafe(msg);
+        String safeUser = LGChatCompat.tinySafe(username);
+        String safeMsg  = LGChatCompat.tinySafe(msg);
 
-        // Texto TinyMsg (se o mod estiver instalado)
         String tiny =
                 "<color:" + col + ">" + tag + safeUser + "</color>" +
                         "<color:" + TINY_TEXT + ">: " + safeMsg + "</color>";
 
-        // fallback sem cor
         String plain = tag + username + ": " + msg;
 
-        Message parsed = tryTinyMsgParse(tiny);
+        Message parsed = LGChatCompat.tryTinyMsgParse(tiny);
         return (parsed != null) ? parsed : Message.raw(plain);
-    }
-
-    private static String tinySafe(String s) {
-        if (s == null) return "";
-        return s.replace("<", "‹").replace(">", "›");
-    }
-
-    @Nullable
-    private static Message tryTinyMsgParse(String tinyText) {
-        // TinyMessage/TinyMsg: fi.sulku.hytale.TinyMsg.parse(String) -> Message
-        try {
-            Class<?> tinyMsg = Class.forName("fi.sulku.hytale.TinyMsg");
-            Method parse = tinyMsg.getMethod("parse", String.class);
-            Object out = parse.invoke(null, tinyText);
-            if (out instanceof Message) return (Message) out;
-        } catch (Throwable ignored) { }
-        return null;
     }
 
     // =========================================================
@@ -333,236 +426,5 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
             } catch (Throwable ignored) { }
         }
         return null;
-    }
-
-    // =========================================================
-    // Permissões: /g e /l livres (fallback via reflection)
-    // =========================================================
-
-    private static void relaxCommandPermissions(Object cmd) {
-        String[] methodNames = {
-                "setRequiredPermissionLevel",
-                "setMinPermissionLevel",
-                "setPermissionLevel",
-                "setPermission",
-                "setPermissionNode",
-                "setRequiredPermission",
-                "requirePermission"
-        };
-
-        for (String mname : methodNames) {
-            try {
-                Method m = cmd.getClass().getMethod(mname, int.class);
-                m.invoke(cmd, 0);
-            } catch (Throwable ignored) { }
-            try {
-                Method m = cmd.getClass().getMethod(mname, short.class);
-                m.invoke(cmd, (short) 0);
-            } catch (Throwable ignored) { }
-            try {
-                Method m = cmd.getClass().getMethod(mname, String.class);
-                // mais seguro: null (muitos checks fazem "if (perm != null)")
-                m.invoke(cmd, new Object[]{null});
-            } catch (Throwable ignored) { }
-        }
-
-        String[] fieldNames = {
-                "requiredPermissionLevel",
-                "minPermissionLevel",
-                "permissionLevel",
-                "permission",
-                "permissionNode",
-                "requiredPermission"
-        };
-
-        for (String fname : fieldNames) {
-            try {
-                Field f = cmd.getClass().getDeclaredField(fname);
-                f.setAccessible(true);
-
-                if (f.getType() == int.class || f.getType() == Integer.class) f.set(cmd, 0);
-                else if (f.getType() == short.class || f.getType() == Short.class) f.set(cmd, (short) 0);
-                else if (f.getType() == String.class) f.set(cmd, null);
-            } catch (Throwable ignored) { }
-        }
-    }
-
-    // =========================================================
-    // /chatdebug (admin): exigir permissão por node (reflection)
-    // =========================================================
-
-    private static void requirePermissionNode(Object cmd, String node) {
-        String[] names = {
-                "setPermissionNode",
-                "setPermission",
-                "setRequiredPermission",
-                "setRequiredPermissionNode",
-                "requirePermission"
-        };
-
-        for (String n : names) {
-            try {
-                Method m = cmd.getClass().getMethod(n, String.class);
-                m.invoke(cmd, node);
-                return;
-            } catch (Throwable ignored) { }
-        }
-
-        // fallback: fields
-        String[] fields = {"permissionNode", "permission", "requiredPermission"};
-        for (String fName : fields) {
-            try {
-                Field f = cmd.getClass().getDeclaredField(fName);
-                f.setAccessible(true);
-                if (f.getType() == String.class) {
-                    f.set(cmd, node);
-                    return;
-                }
-            } catch (Throwable ignored) { }
-        }
-    }
-
-    // ✅ agora aceita Object (CommandSender ou PlayerRef)
-    private static boolean hasPermissionCompat(Object sender, String node) {
-        if (sender == null) return false;
-
-        String[] names = {
-                "hasPermission",
-                "hasPermissionNode",
-                "hasPerm",
-                "permission"
-        };
-
-        for (String n : names) {
-            try {
-                Method m = sender.getClass().getMethod(n, String.class);
-                Object r = m.invoke(sender, node);
-                if (r instanceof Boolean) return (Boolean) r;
-            } catch (Throwable ignored) { }
-        }
-
-        // Se não existe API de checagem nesse build, deixa o servidor decidir via permission node do comando
-        return true;
-    }
-
-    // =========================================================
-    // Modos + comandos
-    // =========================================================
-
-    private enum ChatMode {
-        GLOBAL, LOCAL
-    }
-
-    // -------------------------
-    // /g (livre)
-    // -------------------------
-    private static final class GCommand extends AbstractCommand {
-        private final LocalGlobalChatPlugin plugin;
-
-        private GCommand(LocalGlobalChatPlugin plugin) {
-            super("g", "Alterna para o chat GLOBAL");
-            this.plugin = plugin;
-
-            // libera por reflection (fallback)
-            relaxCommandPermissions(this);
-        }
-
-        @Override
-        protected boolean canGeneratePermission() {
-            // ✅ comando livre
-            return false;
-        }
-
-        @Override
-        @Nullable
-        protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
-            UUID uuid = context.sender().getUuid();
-            if (uuid == null) {
-                context.sender().sendMessage(Message.raw("Este comando so pode ser usado por jogadores."));
-                return CompletableFuture.completedFuture(null);
-            }
-
-            plugin.setMode(uuid, ChatMode.GLOBAL);
-            context.sender().sendMessage(Message.raw("Agora voce esta no chat GLOBAL. [G]"));
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    // -------------------------
-    // /l (livre)
-    // -------------------------
-    private static final class LCommand extends AbstractCommand {
-        private final LocalGlobalChatPlugin plugin;
-
-        private LCommand(LocalGlobalChatPlugin plugin) {
-            super("l", "Alterna para o chat LOCAL (raio de 50 blocos)");
-            this.plugin = plugin;
-
-            // libera por reflection (fallback)
-            relaxCommandPermissions(this);
-        }
-
-        @Override
-        protected boolean canGeneratePermission() {
-            // ✅ comando livre
-            return false;
-        }
-
-        @Override
-        @Nullable
-        protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
-            UUID uuid = context.sender().getUuid();
-            if (uuid == null) {
-                context.sender().sendMessage(Message.raw("Este comando so pode ser usado por jogadores."));
-                return CompletableFuture.completedFuture(null);
-            }
-
-            plugin.setMode(uuid, ChatMode.LOCAL);
-            context.sender().sendMessage(Message.raw("Agora voce esta no chat LOCAL (50 blocos). [L]"));
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    // -------------------------
-    // /chatdebug (admin)
-    // -------------------------
-    private static final class ChatDebugCommand extends AbstractCommand {
-        private final LocalGlobalChatPlugin plugin;
-
-        private ChatDebugCommand(LocalGlobalChatPlugin plugin) {
-            super("chatdebug", "Ativa/desativa debug do chat (mostra targets)");
-            this.plugin = plugin;
-
-            // ✅ exige permissão (admin)
-            requirePermissionNode(this, PERM_CHATDEBUG);
-        }
-
-        @Override
-        protected boolean canGeneratePermission() {
-            // ✅ servidor controla quem pode (admin)
-            return true;
-        }
-
-        @Override
-        @Nullable
-        protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
-            UUID uuid = context.sender().getUuid();
-            if (uuid == null) {
-                context.sender().sendMessage(Message.raw("Este comando so pode ser usado por jogadores."));
-                return CompletableFuture.completedFuture(null);
-            }
-
-            // ✅ checagem extra (sem erro de tipo agora)
-            if (!hasPermissionCompat(context.sender(), PERM_CHATDEBUG)) {
-                context.sender().sendMessage(Message.raw("Voce nao tem permissao para usar /chatdebug."));
-                return CompletableFuture.completedFuture(null);
-            }
-
-            plugin.toggleDebug(uuid);
-            boolean now = plugin.isDebug(uuid);
-
-            context.sender().sendMessage(Message.raw("ChatDebug: " + (now ? "ON" : "OFF")));
-            return CompletableFuture.completedFuture(null);
-        }
     }
 }
