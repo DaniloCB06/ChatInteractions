@@ -10,6 +10,7 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Objects;
@@ -22,6 +23,14 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
     private static final double LOCAL_RADIUS = 50.0;
     private static final double LOCAL_RADIUS_SQ = LOCAL_RADIUS * LOCAL_RADIUS;
+
+    // TinyMessage/TinyMsg (se estiver instalado no servidor)
+    private static final String TINY_GLOBAL = "green";
+    private static final String TINY_LOCAL  = "yellow";
+    private static final String TINY_TEXT   = "white";
+
+    // Permissão do /chatdebug (admin)
+    private static final String PERM_CHATDEBUG = "hytale.command.chatdebug";
 
     // modo do chat por jogador
     private final Map<UUID, ChatMode> chatModes = new ConcurrentHashMap<>();
@@ -39,39 +48,51 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         getCommandRegistry().registerCommand(new LCommand(this));
         getCommandRegistry().registerCommand(new ChatDebugCommand(this));
 
-        // Registro do evento via reflection (pra não quebrar com diferenças de generics na sua API)
-        registerChatEventListener();
+        // Registro do chat via reflection (evita erros de generics/assinaturas)
+        registerEventListener(PlayerChatEvent.class, ev -> onChat((PlayerChatEvent) ev));
+
+        // (Opcional) tenta resetar para LOCAL quando o jogador entrar (se existir evento)
+        tryRegisterJoinResetToLocal();
     }
 
     // =========================================================
-    // Registro de evento (reflection)
+    // Chat local como padrão
     // =========================================================
 
-    private void registerChatEventListener() {
+    private ChatMode getMode(UUID uuid) {
+        return chatModes.getOrDefault(uuid, ChatMode.LOCAL);
+    }
+
+    private void setMode(UUID uuid, ChatMode mode) {
+        chatModes.put(uuid, mode);
+    }
+
+    private boolean isDebug(UUID uuid) {
+        return debugModes.getOrDefault(uuid, false);
+    }
+
+    private void toggleDebug(UUID uuid) {
+        debugModes.put(uuid, !isDebug(uuid));
+    }
+
+    // =========================================================
+    // Registro de eventos via reflection (compatível entre builds)
+    // =========================================================
+
+    private void registerEventListener(Class<?> eventClass, Consumer<Object> handler) {
         Object registry = getEventRegistry();
-
-        // Consumer RAW (sem generics) pra encaixar em qualquer assinatura com erasure
-        Consumer<Object> handler = ev -> {
-            if (ev instanceof PlayerChatEvent) {
-                onChat((PlayerChatEvent) ev);
-            }
-        };
-
-        // Tenta várias assinaturas possíveis de register(...)
-        if (tryRegister(registry, handler)) {
-            System.out.println("[LocalGlobalChat] PlayerChatEvent registrado com sucesso.");
-        } else {
-            System.err.println("[LocalGlobalChat] ERRO: nao consegui registrar PlayerChatEvent. API diferente.");
+        if (!tryRegister(registry, eventClass, handler)) {
+            System.err.println("[LocalGlobalChat] ERRO: nao consegui registrar evento: " + eventClass.getName());
         }
     }
 
-    private boolean tryRegister(Object registry, Consumer<Object> handler) {
+    private boolean tryRegister(Object registry, Class<?> eventClass, Consumer<Object> handler) {
         Method[] methods = registry.getClass().getMethods();
 
         // 1) register(Class, Consumer)
         try {
             Method m = registry.getClass().getMethod("register", Class.class, Consumer.class);
-            m.invoke(registry, PlayerChatEvent.class, handler);
+            m.invoke(registry, eventClass, handler);
             return true;
         } catch (Throwable ignored) { }
 
@@ -84,13 +105,13 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
                 Class<?>[] p = m.getParameterTypes();
                 if (p[1] == Class.class && Consumer.class.isAssignableFrom(p[2])) {
                     Object priorityOrShort = defaultValueFor(p[0]);
-                    m.invoke(registry, priorityOrShort, PlayerChatEvent.class, handler);
+                    m.invoke(registry, priorityOrShort, eventClass, handler);
                     return true;
                 }
             } catch (Throwable ignored) { }
         }
 
-        // 3) register(Class, key, Consumer)  (key geralmente pode ser null para "qualquer", dependendo da API)
+        // 3) register(Class, key, Consumer)
         for (Method m : methods) {
             try {
                 if (!m.getName().equals("register")) continue;
@@ -98,7 +119,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
                 Class<?>[] p = m.getParameterTypes();
                 if (p[0] == Class.class && Consumer.class.isAssignableFrom(p[2]) && p[1] != Class.class) {
-                    m.invoke(registry, PlayerChatEvent.class, null, handler);
+                    m.invoke(registry, eventClass, null, handler);
                     return true;
                 }
             } catch (Throwable ignored) { }
@@ -113,7 +134,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
                 Class<?>[] p = m.getParameterTypes();
                 if (p[1] == Class.class && Consumer.class.isAssignableFrom(p[3]) && p[2] != Class.class) {
                     Object priorityOrShort = defaultValueFor(p[0]);
-                    m.invoke(registry, priorityOrShort, PlayerChatEvent.class, null, handler);
+                    m.invoke(registry, priorityOrShort, eventClass, null, handler);
                     return true;
                 }
             } catch (Throwable ignored) { }
@@ -137,36 +158,61 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // Lógica do chat
+    // (Opcional) resetar para LOCAL ao entrar (se existir evento)
     // =========================================================
 
-    private ChatMode getMode(UUID uuid) {
-        return chatModes.getOrDefault(uuid, ChatMode.GLOBAL);
+    private void tryRegisterJoinResetToLocal() {
+        String[] candidates = new String[] {
+                "com.hypixel.hytale.server.core.event.events.player.PlayerJoinEvent",
+                "com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent",
+                "com.hypixel.hytale.server.core.event.events.player.PlayerLoginEvent",
+                "com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent"
+        };
+
+        for (String cn : candidates) {
+            try {
+                Class<?> joinEventClass = Class.forName(cn);
+
+                Consumer<Object> handler = ev -> {
+                    PlayerRef p = extractPlayerRef(ev);
+                    if (p != null && p.getUuid() != null) {
+                        setMode(p.getUuid(), ChatMode.LOCAL);
+                    }
+                };
+
+                if (tryRegister(getEventRegistry(), joinEventClass, handler)) {
+                    System.out.println("[LocalGlobalChat] JoinEvent registrado: " + cn);
+                    return;
+                }
+            } catch (Throwable ignored) { }
+        }
+
+        System.out.println("[LocalGlobalChat] JoinEvent nao encontrado (ok). Default LOCAL ainda funciona.");
     }
 
-    private void setMode(UUID uuid, ChatMode mode) {
-        chatModes.put(uuid, mode);
+    private static PlayerRef extractPlayerRef(Object event) {
+        String[] methods = {"getPlayer", "getSender", "player", "sender"};
+        for (String mname : methods) {
+            try {
+                Method m = event.getClass().getMethod(mname);
+                Object r = m.invoke(event);
+                if (r instanceof PlayerRef) return (PlayerRef) r;
+            } catch (Throwable ignored) { }
+        }
+        return null;
     }
 
-    private boolean isDebug(UUID uuid) {
-        return debugModes.getOrDefault(uuid, false);
-    }
-
-    private void toggleDebug(UUID uuid) {
-        debugModes.put(uuid, !isDebug(uuid));
-    }
+    // =========================================================
+    // Chat formatado (cores via TinyMsg se instalado)
+    // =========================================================
 
     private void onChat(PlayerChatEvent event) {
         PlayerRef sender = event.getSender();
         UUID senderUuid = sender.getUuid();
 
         ChatMode mode = getMode(senderUuid);
-        String tag = (mode == ChatMode.LOCAL) ? "[L] " : "[G] ";
 
-        // Prefixo + nome + mensagem
-        event.setFormatter((ignoredViewer, message) ->
-                Message.raw(tag + sender.getUsername() + ": " + message)
-        );
+        event.setFormatter((ignoredViewer, message) -> formatChat(mode, sender.getUsername(), message));
 
         // Local: filtra targets por distância
         if (mode == ChatMode.LOCAL) {
@@ -188,7 +234,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
             });
         }
 
-        // ===== DEBUG =====
+        // DEBUG (somente se estiver ligado)
         if (isDebug(senderUuid)) {
             StringBuilder sb = new StringBuilder();
             sb.append("DEBUG chat=").append(mode == ChatMode.LOCAL ? "LOCAL" : "GLOBAL");
@@ -204,9 +250,45 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
                     break;
                 }
             }
-
             sender.sendMessage(Message.raw(sb.toString()));
         }
+    }
+
+    private static Message formatChat(ChatMode mode, String username, String msg) {
+        String tag = (mode == ChatMode.LOCAL) ? "[L] " : "[G] ";
+        String col = (mode == ChatMode.LOCAL) ? TINY_LOCAL : TINY_GLOBAL;
+
+        // evita jogador quebrar tags usando "<...>"
+        String safeUser = tinySafe(username);
+        String safeMsg  = tinySafe(msg);
+
+        // Texto TinyMsg (se o mod estiver instalado)
+        String tiny =
+                "<color:" + col + ">" + tag + safeUser + "</color>" +
+                        "<color:" + TINY_TEXT + ">: " + safeMsg + "</color>";
+
+        // fallback sem cor
+        String plain = tag + username + ": " + msg;
+
+        Message parsed = tryTinyMsgParse(tiny);
+        return (parsed != null) ? parsed : Message.raw(plain);
+    }
+
+    private static String tinySafe(String s) {
+        if (s == null) return "";
+        return s.replace("<", "‹").replace(">", "›");
+    }
+
+    @Nullable
+    private static Message tryTinyMsgParse(String tinyText) {
+        // TinyMessage/TinyMsg: fi.sulku.hytale.TinyMsg.parse(String) -> Message
+        try {
+            Class<?> tinyMsg = Class.forName("fi.sulku.hytale.TinyMsg");
+            Method parse = tinyMsg.getMethod("parse", String.class);
+            Object out = parse.invoke(null, tinyText);
+            if (out instanceof Message) return (Message) out;
+        } catch (Throwable ignored) { }
+        return null;
     }
 
     // =========================================================
@@ -254,6 +336,116 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
+    // Permissões: /g e /l livres (fallback via reflection)
+    // =========================================================
+
+    private static void relaxCommandPermissions(Object cmd) {
+        String[] methodNames = {
+                "setRequiredPermissionLevel",
+                "setMinPermissionLevel",
+                "setPermissionLevel",
+                "setPermission",
+                "setPermissionNode",
+                "setRequiredPermission",
+                "requirePermission"
+        };
+
+        for (String mname : methodNames) {
+            try {
+                Method m = cmd.getClass().getMethod(mname, int.class);
+                m.invoke(cmd, 0);
+            } catch (Throwable ignored) { }
+            try {
+                Method m = cmd.getClass().getMethod(mname, short.class);
+                m.invoke(cmd, (short) 0);
+            } catch (Throwable ignored) { }
+            try {
+                Method m = cmd.getClass().getMethod(mname, String.class);
+                // mais seguro: null (muitos checks fazem "if (perm != null)")
+                m.invoke(cmd, new Object[]{null});
+            } catch (Throwable ignored) { }
+        }
+
+        String[] fieldNames = {
+                "requiredPermissionLevel",
+                "minPermissionLevel",
+                "permissionLevel",
+                "permission",
+                "permissionNode",
+                "requiredPermission"
+        };
+
+        for (String fname : fieldNames) {
+            try {
+                Field f = cmd.getClass().getDeclaredField(fname);
+                f.setAccessible(true);
+
+                if (f.getType() == int.class || f.getType() == Integer.class) f.set(cmd, 0);
+                else if (f.getType() == short.class || f.getType() == Short.class) f.set(cmd, (short) 0);
+                else if (f.getType() == String.class) f.set(cmd, null);
+            } catch (Throwable ignored) { }
+        }
+    }
+
+    // =========================================================
+    // /chatdebug (admin): exigir permissão por node (reflection)
+    // =========================================================
+
+    private static void requirePermissionNode(Object cmd, String node) {
+        String[] names = {
+                "setPermissionNode",
+                "setPermission",
+                "setRequiredPermission",
+                "setRequiredPermissionNode",
+                "requirePermission"
+        };
+
+        for (String n : names) {
+            try {
+                Method m = cmd.getClass().getMethod(n, String.class);
+                m.invoke(cmd, node);
+                return;
+            } catch (Throwable ignored) { }
+        }
+
+        // fallback: fields
+        String[] fields = {"permissionNode", "permission", "requiredPermission"};
+        for (String fName : fields) {
+            try {
+                Field f = cmd.getClass().getDeclaredField(fName);
+                f.setAccessible(true);
+                if (f.getType() == String.class) {
+                    f.set(cmd, node);
+                    return;
+                }
+            } catch (Throwable ignored) { }
+        }
+    }
+
+    // ✅ agora aceita Object (CommandSender ou PlayerRef)
+    private static boolean hasPermissionCompat(Object sender, String node) {
+        if (sender == null) return false;
+
+        String[] names = {
+                "hasPermission",
+                "hasPermissionNode",
+                "hasPerm",
+                "permission"
+        };
+
+        for (String n : names) {
+            try {
+                Method m = sender.getClass().getMethod(n, String.class);
+                Object r = m.invoke(sender, node);
+                if (r instanceof Boolean) return (Boolean) r;
+            } catch (Throwable ignored) { }
+        }
+
+        // Se não existe API de checagem nesse build, deixa o servidor decidir via permission node do comando
+        return true;
+    }
+
+    // =========================================================
     // Modos + comandos
     // =========================================================
 
@@ -261,12 +453,24 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         GLOBAL, LOCAL
     }
 
+    // -------------------------
+    // /g (livre)
+    // -------------------------
     private static final class GCommand extends AbstractCommand {
         private final LocalGlobalChatPlugin plugin;
 
         private GCommand(LocalGlobalChatPlugin plugin) {
-            super("g", "Fala no chat global");
+            super("g", "Alterna para o chat GLOBAL");
             this.plugin = plugin;
+
+            // libera por reflection (fallback)
+            relaxCommandPermissions(this);
+        }
+
+        @Override
+        protected boolean canGeneratePermission() {
+            // ✅ comando livre
+            return false;
         }
 
         @Override
@@ -284,12 +488,24 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         }
     }
 
+    // -------------------------
+    // /l (livre)
+    // -------------------------
     private static final class LCommand extends AbstractCommand {
         private final LocalGlobalChatPlugin plugin;
 
         private LCommand(LocalGlobalChatPlugin plugin) {
-            super("l", "Fala no chat local (raio de 50 blocos)");
+            super("l", "Alterna para o chat LOCAL (raio de 50 blocos)");
             this.plugin = plugin;
+
+            // libera por reflection (fallback)
+            relaxCommandPermissions(this);
+        }
+
+        @Override
+        protected boolean canGeneratePermission() {
+            // ✅ comando livre
+            return false;
         }
 
         @Override
@@ -307,12 +523,24 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         }
     }
 
+    // -------------------------
+    // /chatdebug (admin)
+    // -------------------------
     private static final class ChatDebugCommand extends AbstractCommand {
         private final LocalGlobalChatPlugin plugin;
 
         private ChatDebugCommand(LocalGlobalChatPlugin plugin) {
             super("chatdebug", "Ativa/desativa debug do chat (mostra targets)");
             this.plugin = plugin;
+
+            // ✅ exige permissão (admin)
+            requirePermissionNode(this, PERM_CHATDEBUG);
+        }
+
+        @Override
+        protected boolean canGeneratePermission() {
+            // ✅ servidor controla quem pode (admin)
+            return true;
         }
 
         @Override
@@ -321,6 +549,12 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
             UUID uuid = context.sender().getUuid();
             if (uuid == null) {
                 context.sender().sendMessage(Message.raw("Este comando so pode ser usado por jogadores."));
+                return CompletableFuture.completedFuture(null);
+            }
+
+            // ✅ checagem extra (sem erro de tipo agora)
+            if (!hasPermissionCompat(context.sender(), PERM_CHATDEBUG)) {
+                context.sender().sendMessage(Message.raw("Voce nao tem permissao para usar /chatdebug."));
                 return CompletableFuture.completedFuture(null);
             }
 
