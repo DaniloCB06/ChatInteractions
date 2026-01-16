@@ -1,176 +1,89 @@
 # LocalGlobalChat (Hytale Plugin)
-
 ```md
+Chat plugin for Hytale featuring **Global/Local chat**, **private messaging**, **admin debugging**, and a **configurable local chat radius**.
 
-Chat plugin for Hytale featuring:
-- **Global** and **Local** chat modes
-- Local chat based on a **distance radius** (configurable)
-- **Private messages** (/msg) fully in **pink**
-- Chat targets debug (admin)
+---
+
+## Features
+
+- Global and Local chat channels
+- Local chat filtered by **distance radius** (same world)
+- Private messages with `/msg` (message is **fully pink**)
+- Admin-only chat debug toggle
+- Admin-only local radius setting (**persists after restart**)
+- Optional TinyMessage/TinyMsg support for better colors/formatting
 
 ---
 
 ## Installation
 
-1. Build the plugin and grab the generated `.jar`.
-2. Put the plugin `.jar` into:
+1. Build the plugin and get the generated `.jar`.
+2. Move the plugin `.jar` to:
    - `mods/`
 3. (Optional, recommended) Install TinyMessage/TinyMsg:
-   - put `tinymessage-*.jar` into `mods/`
+   - Move `tinymessage-*.jar` to `mods/`
 4. Restart the server.
 
-> **Tip:** With TinyMessage/TinyMsg installed, colors and formatting work better.
+> With TinyMessage/TinyMsg installed, chat colors and formatting look better.
 
 ---
 
-## How it works (quick overview)
+## How It Works
 
-- Player default chat mode on join is **LOCAL**.
-- Use **/g** to switch to **GLOBAL**.
-- Use **/l** to switch to **LOCAL**.
-- In **LOCAL**, only players in the same world and within the configured radius will receive the message.
+- When a player joins, their default chat channel is **Local**.
+- **Local chat** is only delivered to players:
+  - in the **same world**
+  - within the configured **radius** (in blocks)
 
 ---
 
 ## Commands
 
-### `/g`
-Switches to **GLOBAL** chat.
-
-**Usage:**
-```
-
-/g
-
-```
-
-**Permission:** None (free)
+- `/g` — Switches you to the **Global** chat channel.
+- `/l` — Switches you to the **Local** chat channel (distance-based).
+- `/msg <player> <message...>` — Sends a **private message** to another player (fully **pink**).
+  - If your build does not support “rest of line”, use quotes: `/msg player2 "hello there"`
+- `/chatdebug` — Toggles **chat debug mode** (shows chat mode + target count). *(Admin only)*
+- `/localradius <number>` — Sets the **Local chat radius** in blocks (saved/persistent). *(Admin only)*
 
 ---
 
-### `/l`
-Switches to **LOCAL** chat (distance-based).
+## Permissions
 
-**Usage:**
-```
-
-/l
-
-```
-
-**Permission:** None (free)
+| Command | Permission | Recommended Role |
+|--------|------------|------------------|
+| `/g` | *(none)* | Everyone |
+| `/l` | *(none)* | Everyone |
+| `/msg` | *(none)* | Everyone |
+| `/chatdebug` | `hytale.command.chatdebug` | Admin |
+| `/localradius` | `hytale.command.localradius` | Admin |
 
 ---
 
-### `/msg <player> <message...>`
-Sends a **private message** to another player (entire message is **pink**).
+## Persistence (Local Radius)
 
-**Usage:**
+The local radius is saved to a config file and persists after a restart.
+
+Default fallback path:
 ```
 
-/msg player2 hi
-
-```
-
-**What shows up:**
-- Sender sees:
-```
-
-[To player2] hi
-
-```
-- Receiver sees:
-```
-
-[from player1] hi
+./plugins/LocalGlobalChat/localglobalchat.properties
 
 ```
 
-**Permission:** None (free)
-
-**Note (messages with spaces):**
-- On most builds, this works normally:
+Stored key:
 ```
 
-/chatdebug
+localRadius=80
 
 ```
-
-**Permission:** `hytale.command.chatdebug` (Admin)
 
 ---
-
-### `/localradius <number>`
-Sets the local chat radius (in blocks).
-
-**Usage:**
-```
-
-/localradius 80
-
-```
-
-**Permission:** `hytale.command.localradius` (Admin)
-
-**Persistence:**
-- The value is saved to a file and remains after server restarts.
-- Default fallback file path:
-  - `./plugins/LocalGlobalChat/localglobalchat.properties`
-  - key: `localRadius=<number>`
-
-```
-
-## Permissions Summary
-
-| Command | Permission |
-|--------|------------|
-| `/g` | *(none)* |
-| `/l` | *(none)* |
-| `/msg` | *(none)* |
-| `/chatdebug` | `hytale.command.chatdebug` |
-| `/localradius` | `hytale.command.localradius` |
-
-> Assign the permissions above only to the Admin group in your permissions system.
-
----
-
-## Quick Examples
-
-```
-- Switch to global:
-```
-
-/g
-
-```
-- Switch back to local:
-```
-
-/l
-
-```
-- Send a DM:
-```
-
-/msg FoToom hi
-
-```
-- Admin: set local radius to 120:
-```
-
-/localradius 120
-
-```
-- Admin: toggle chat targets debug:
-```
-
-/chatdebug
-
 
 ## Notes
 
-- Local chat is filtered by:
-- Same world
-- Distance <= configured radius
+- Local chat filtering:
+  - Same world
+  - Distance ≤ configured radius
 - The plugin automatically uses TinyMsg if installed.
-
+```
