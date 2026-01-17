@@ -26,7 +26,7 @@ public class ChatAdminAddCommand extends CommandBase {
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         if (!plugin.canUseChatAdmin(context)) {
-            context.sendMessage(LocalGlobalChatPlugin.systemColor("red", "Você não tem permissão."));
+            context.sendMessage(LocalGlobalChatPlugin.systemColor("red", "You don't have permission"));
             return;
         }
 
@@ -35,7 +35,7 @@ public class ChatAdminAddCommand extends CommandBase {
 
         if (uuid == null) {
             context.sendMessage(LocalGlobalChatPlugin.systemColor("red",
-                    "Player não encontrado online e UUID inválido. Use um UUID para offline."));
+                    "Player not found online and invalid UUID. Use a UUID for offline players."));
             return;
         }
 
@@ -44,9 +44,9 @@ public class ChatAdminAddCommand extends CommandBase {
 
         if (added) {
             context.sendMessage(LocalGlobalChatPlugin.systemColor("green",
-                    "Adicionado ao chatadmin: " + uuid + (name != null ? " (" + name + ")" : "")));
+                    "Added to chatadmin: " + uuid + (name != null ? " (" + name + ")" : "")));
         } else {
-            context.sendMessage(Message.raw("Esse UUID já está na lista: " + uuid));
+            context.sendMessage(Message.raw("That UUID is already on the list: " + uuid));
         }
     }
 }

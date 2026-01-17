@@ -34,9 +34,10 @@ public final class CommandCompat {
         }
     }
 
-    // Alguns builds exigem declarar "aceita args". Isso tenta mexer no comando por reflection.
+    // Some builds require declaring that the command "accepts args".
+    // This tries to tweak the command via reflection.
     public static void tryAllowArgsCompat(CommandBase cmd) {
-        // tenta métodos comuns
+        // try common methods
         invokeDeep(cmd, "setMaxArgs", new Class[]{int.class}, new Object[]{Integer.MAX_VALUE});
         invokeDeep(cmd, "setMaxArguments", new Class[]{int.class}, new Object[]{Integer.MAX_VALUE});
         invokeDeep(cmd, "setMinArgs", new Class[]{int.class}, new Object[]{0});
@@ -86,7 +87,7 @@ public final class CommandCompat {
             return out.toArray(new String[0]);
         }
 
-        // fallback: tenta input cru
+        // fallback: try raw input
         String raw = tryGetString(context,
                 "getRawInput", "rawInput",
                 "getInput", "input",
@@ -96,7 +97,7 @@ public final class CommandCompat {
         if (raw != null) {
             String s = raw.trim();
             if (s.startsWith("/")) s = s.substring(1);
-            // remove o nome do comando (primeira palavra)
+            // remove the command name (first word)
             int sp = s.indexOf(' ');
             if (sp < 0) return new String[0];
             s = s.substring(sp + 1).trim();

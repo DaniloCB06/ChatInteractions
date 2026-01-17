@@ -12,21 +12,21 @@ import java.util.concurrent.CompletableFuture;
 
 public final class ClearChatCommand extends AbstractCommand {
 
-    // Dê esse node apenas pro grupo admin no seu sistema de permissões
+    // Give this node only to the admin group in your permission system
     private static final String PERM_NODE = "localglobalchat.admin.clearchat";
 
     private static final int CLEAR_LINES = 120;
 
     public ClearChatCommand() {
-        super("clearchat", "Limpa o chat para todos os jogadores online");
+        super("clearchat", "Clears the chat for all online players");
 
-        // Exige permissão (admin)
+        // Requires permission (admin)
         LGChatCompat.requirePermissionNode(this, PERM_NODE);
 
-        // (Opcional) alias /cc se o build suportar
+        // (Optional) alias /cc if the build supports it
         trySetAliases(this, "cc");
 
-        // (Opcional) também tenta exigir nível alto (caso o seu build use níveis)
+        // (Optional) also tries to require a high permission level (if your build uses levels)
         trySetHighPermissionLevel(this, 4);
     }
 
@@ -38,10 +38,10 @@ public final class ClearChatCommand extends AbstractCommand {
     @Override
     @Nullable
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
-        // Console normalmente pode (equivalente a admin)
+        // Console can usually run this (equivalent to admin)
         if (context.sender().getUuid() != null) {
             if (!LGChatCompat.hasPermissionCompat(context.sender(), PERM_NODE)) {
-                context.sender().sendMessage(LGChatCompat.pinkMessage("Sem permissao: " + PERM_NODE));
+                context.sender().sendMessage(LGChatCompat.pinkMessage("No permission: " + PERM_NODE));
                 return CompletableFuture.completedFuture(null);
             }
         }
@@ -60,14 +60,14 @@ public final class ClearChatCommand extends AbstractCommand {
             affected++;
         }
 
-        context.sender().sendMessage(Message.raw("Chat limpo para " + affected + " jogador(es)."));
+        context.sender().sendMessage(Message.raw("Chat cleared for " + affected + " player(s)."));
         return CompletableFuture.completedFuture(null);
     }
 
     private static Message buildNotice() {
-        String text = "Chat foi limpo pela administracao.";
+        String text = "Chat was cleared by staff.";
 
-        // tenta com TinyMsg (se existir), senão fallback raw
+        // Try TinyMsg (if available), otherwise fallback to raw
         String tiny = "<color:gray>" + LGChatCompat.tinySafe(text) + "</color>";
         Message parsed = LGChatCompat.tryTinyMsgParse(tiny);
         return (parsed != null) ? parsed : Message.raw(text);
@@ -95,7 +95,7 @@ public final class ClearChatCommand extends AbstractCommand {
         return java.util.List.of();
     }
 
-    // ---------- Aliases (opcional) ----------
+    // ---------- Aliases (optional) ----------
     private static void trySetAliases(Object cmd, String... aliases) {
         if (cmd == null || aliases == null || aliases.length == 0) return;
 
@@ -114,7 +114,7 @@ public final class ClearChatCommand extends AbstractCommand {
         }
     }
 
-    // ---------- Nível de permissão alto (opcional) ----------
+    // ---------- High permission level (optional) ----------
     private static void trySetHighPermissionLevel(Object cmd, int level) {
         String[] names = {
                 "setRequiredPermissionLevel", "setMinPermissionLevel",

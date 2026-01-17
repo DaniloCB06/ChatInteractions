@@ -14,7 +14,7 @@ public final class LGChatCompat {
 
     private LGChatCompat() {}
 
-    // Rosa do /msg
+    // /msg pink color
     private static final String TINY_PINK_HEX = "#ff55ff";
 
     // =========================================================
@@ -42,12 +42,12 @@ public final class LGChatCompat {
         String tiny = "<color:" + TINY_PINK_HEX + ">" + safe + "</color>";
         Message parsed = tryTinyMsgParse(tiny);
 
-        // fallback rosa (legacy)
+        // Pink fallback (legacy)
         return (parsed != null) ? parsed : Message.raw("§d" + plainText + "§r");
     }
 
     // =========================================================
-    // Permissões (reflection)
+    // Permissions (reflection)
     // =========================================================
 
     public static void relaxCommandPermissions(Object cmd) {
@@ -72,7 +72,7 @@ public final class LGChatCompat {
             } catch (Throwable ignored) { }
             try {
                 Method m = cmd.getClass().getMethod(mname, String.class);
-                m.invoke(cmd, new Object[]{null}); // mais seguro
+                m.invoke(cmd, new Object[]{null}); // safer
             } catch (Throwable ignored) { }
         }
 
@@ -128,7 +128,7 @@ public final class LGChatCompat {
     }
 
     public static boolean hasPermissionCompat(Object sender, String node) {
-        // Mantém o comportamento antigo (fallback true) para comandos/console
+        // Keeps old behavior (fallback true) for commands/console
         return hasPermissionCompat(sender, node, true);
     }
 
@@ -144,13 +144,12 @@ public final class LGChatCompat {
             } catch (Throwable ignored) { }
         }
 
-        // AQUI é a correção: quem decide o fallback é o chamador
+        // IMPORTANT: the caller decides the fallback
         return fallbackIfUnknown;
     }
 
-
     // =========================================================
-    // Resolver nome do remetente (CommandSender não tem getUsername)
+    // Resolve sender name (CommandSender may not have getUsername)
     // =========================================================
 
     public static String resolveSenderUsername(Object sender, UUID senderUuid) {
@@ -180,7 +179,7 @@ public final class LGChatCompat {
     }
 
     // =========================================================
-    // Buscar players online (reflection no Universe)
+    // Find online players (reflection on Universe)
     // =========================================================
 
     @Nullable
@@ -202,7 +201,7 @@ public final class LGChatCompat {
                 if (pr != null) return pr;
             } catch (Throwable ignored) { }
 
-            // 2) métodos alternativos
+            // 2) alternative methods
             for (String mn : new String[]{"findPlayerByUsername", "getPlayerByName", "findPlayerByName"}) {
                 try {
                     Method m = uni.getClass().getMethod(mn, String.class);
@@ -212,7 +211,7 @@ public final class LGChatCompat {
                 } catch (Throwable ignored) { }
             }
 
-            // 3) fallback: iterar players online
+            // 3) fallback: iterate online players
             for (Method m : uni.getClass().getMethods()) {
                 try {
                     String name = m.getName();
@@ -249,7 +248,7 @@ public final class LGChatCompat {
             Object uni = uniCl.getMethod("get").invoke(null);
             if (uni == null) return null;
 
-            // tenta getPlayer/findPlayer(UUID)
+            // try getPlayer/findPlayer(UUID)
             for (Method m : uni.getClass().getMethods()) {
                 try {
                     if (m.getParameterCount() != 1) continue;
@@ -264,7 +263,7 @@ public final class LGChatCompat {
                 } catch (Throwable ignored) { }
             }
 
-            // fallback: iterar players online
+            // fallback: iterate online players
             for (Method m : uni.getClass().getMethods()) {
                 try {
                     String name = m.getName();

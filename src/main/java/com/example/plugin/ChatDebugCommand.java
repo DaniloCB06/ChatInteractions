@@ -16,7 +16,7 @@ public final class ChatDebugCommand extends AbstractCommand {
     private final LocalGlobalChatPlugin plugin;
 
     public ChatDebugCommand(LocalGlobalChatPlugin plugin) {
-        super("chatdebug", "Ativa/desativa debug do chat (mostra targets)");
+        super("chatdebug", "Toggles chat debug (shows targets)");
         this.plugin = plugin;
 
         LGChatCompat.requirePermissionNode(this, PERM_CHATDEBUG);
@@ -32,12 +32,12 @@ public final class ChatDebugCommand extends AbstractCommand {
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
         UUID uuid = context.sender().getUuid();
         if (uuid == null) {
-            context.sender().sendMessage(Message.raw("Este comando so pode ser usado por jogadores."));
+            context.sender().sendMessage(Message.raw("This command can only be used by players."));
             return CompletableFuture.completedFuture(null);
         }
 
         if (!LGChatCompat.hasPermissionCompat(context.sender(), PERM_CHATDEBUG)) {
-            context.sender().sendMessage(Message.raw("Voce nao tem permissao para usar /chatdebug."));
+            context.sender().sendMessage(Message.raw("You don't have permission to use /chatdebug."));
             return CompletableFuture.completedFuture(null);
         }
 

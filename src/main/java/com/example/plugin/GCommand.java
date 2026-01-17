@@ -14,7 +14,7 @@ public final class GCommand extends AbstractCommand {
     private final LocalGlobalChatPlugin plugin;
 
     public GCommand(LocalGlobalChatPlugin plugin) {
-        super("g", "Alterna para o chat GLOBAL");
+        super("g", "Switches to GLOBAL chat");
         this.plugin = plugin;
 
         LGChatCompat.relaxCommandPermissions(this);
@@ -30,12 +30,12 @@ public final class GCommand extends AbstractCommand {
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
         UUID uuid = context.sender().getUuid();
         if (uuid == null) {
-            context.sender().sendMessage(Message.raw("Este comando so pode ser usado por jogadores."));
+            context.sender().sendMessage(Message.raw("This command can only be used by players."));
             return CompletableFuture.completedFuture(null);
         }
 
         plugin.setMode(uuid, ChatMode.GLOBAL);
-        context.sender().sendMessage(Message.raw("Agora voce esta no chat GLOBAL. [G]"));
+        context.sender().sendMessage(Message.raw("You are now in GLOBAL chat. [G]"));
         return CompletableFuture.completedFuture(null);
     }
 }

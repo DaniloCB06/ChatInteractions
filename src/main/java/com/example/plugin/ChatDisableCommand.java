@@ -16,19 +16,19 @@ public class ChatDisableCommand extends CommandBase {
         super("chatdisable", "localglobalchat.commands.chardisable.desc");
         this.plugin = plugin;
 
-        // Permissão (admins)
+        // Permission (admins)
         LGChatCompat.requirePermissionNode(this, LocalGlobalChatPlugin.PERM_CHAT_DISABLE);
 
-        // Alias /cdb (compatível via reflection)
+        // Alias /cdb (reflection-compatible)
         addAliasCompat("cdb");
     }
 
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
-        // Double-check (além do requiredPermission do comando)
+        // Double-check (in addition to the command's requiredPermission)
         if (!senderHasPermission(context, LocalGlobalChatPlugin.PERM_CHAT_DISABLE)) {
             context.sendMessage(LocalGlobalChatPlugin.systemColor("red",
-                    "Você não tem permissão para usar este comando."));
+                    "You don't have permission to use this command."));
             return;
         }
 
@@ -36,21 +36,21 @@ public class ChatDisableCommand extends CommandBase {
 
         if (nowDisabled) {
             plugin.broadcastSystemMessage(LocalGlobalChatPlugin.systemColor("red",
-                    "O chat foi desativado pela administração"));
+                    "Chat has been disabled by the staff."));
         } else {
             plugin.broadcastSystemMessage(LocalGlobalChatPlugin.systemColor("green",
-                    "O chat foi reativado pela administração"));
+                    "Chat has been re-enabled by the staff."));
         }
     }
 
     private static boolean senderHasPermission(CommandContext context, String node) {
         try {
-            // contexto.sender() -> hasPermission("node")
+            // context.sender() -> hasPermission("node")
             Method senderM = context.getClass().getMethod("sender");
             Object sender = senderM.invoke(context);
             return LGChatCompat.hasPermissionCompat(sender, node);
         } catch (Throwable ignored) {
-            // fallback: se o build não expõe sender(), deixa o servidor validar pelo permission node do comando
+            // fallback: if this build doesn't expose sender(), let the server validate via the command permission node
             return true;
         }
     }

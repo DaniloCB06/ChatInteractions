@@ -22,28 +22,28 @@ public final class MsgCommand extends AbstractCommand {
     private final RequiredArg<String> messageArg;
 
     public MsgCommand() {
-        super("msg", "Envia uma mensagem privada para um jogador");
+        super("msg", "Sends a private message to a player");
 
         LGChatCompat.relaxCommandPermissions(this);
 
-        targetArg = withRequiredArg("player", "Jogador alvo", ArgTypes.PLAYER_REF);
+        targetArg = withRequiredArg("player", "Target player", ArgTypes.PLAYER_REF);
 
-        // 1) tenta encontrar um ArgType “greedy/rest-of-line” dentro de ArgTypes
+        // 1) Try to find a “greedy/rest-of-line” ArgType inside ArgTypes
         Object bestMsgType = findGreedyLikeTextArgType();
         RequiredArg<String> tmp;
 
         if (bestMsgType != null && bestMsgType != ArgTypes.STRING) {
-            tmp = withRequiredArgCompat("message", "Mensagem", bestMsgType);
+            tmp = withRequiredArgCompat("message", "Message", bestMsgType);
         } else {
-            tmp = withRequiredArg("message", "Mensagem", ArgTypes.STRING);
+            tmp = withRequiredArg("message", "Message", ArgTypes.STRING);
         }
         messageArg = tmp;
 
-        // 2) tenta ligar greedy no argumento/tipo (caso exista essa flag no build)
+        // 2) Try to enable greedy mode on the argument/type (if that flag exists in this build)
         tryEnableGreedyRecursively(messageArg);
         tryEnableGreedyRecursively(bestMsgType);
 
-        // 3) MAIS IMPORTANTE: força o comando a aceitar argumentos “a mais”
+        // 3) MOST IMPORTANT: force the command to accept “extra” arguments
         forceAllowTrailingArguments(this);
     }
 
@@ -57,22 +57,23 @@ public final class MsgCommand extends AbstractCommand {
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
         UUID senderUuid = context.sender().getUuid();
         if (senderUuid == null) {
-            context.sender().sendMessage(LGChatCompat.pinkMessage("Este comando so pode ser usado por jogadores."));
+            context.sender().sendMessage(LGChatCompat.pinkMessage("This command can only be used by players."));
             return CompletableFuture.completedFuture(null);
         }
 
         PlayerRef target = context.get(targetArg);
         if (target == null || target.getUuid() == null) {
-            context.sender().sendMessage(LGChatCompat.pinkMessage("Jogador nao encontrado (online)."));
+            context.sender().sendMessage(LGChatCompat.pinkMessage("Player not found (online)."));
             return CompletableFuture.completedFuture(null);
         }
 
         if (Objects.equals(senderUuid, target.getUuid())) {
-            context.sender().sendMessage(LGChatCompat.pinkMessage("Voce nao pode enviar /msg para voce mesmo."));
+            context.sender().sendMessage(LGChatCompat.pinkMessage("You can't send /msg to yourself."));
             return CompletableFuture.completedFuture(null);
         }
 
-        // Preferência TOTAL: pega o resto da linha crua (funciona mesmo se o parser só consumir 1 palavra)
+        // FULL preference: get the raw remainder of the command line
+        // (works even if the parser only consumes one word)
         String raw = getInputStringCompat(context);
         String remainder = extractRemainder(raw);
 
@@ -80,25 +81,25 @@ public final class MsgCommand extends AbstractCommand {
         if (remainder != null && !remainder.isBlank()) {
             msg = remainder.trim();
         } else {
-            // fallback: o que o parser deu
+            // fallback: whatever the parser gave us
             msg = context.get(messageArg);
         }
 
         if (msg == null || msg.trim().isEmpty()) {
-            context.sender().sendMessage(LGChatCompat.pinkMessage("Uso: /msg <player> <mensagem...>"));
+            context.sender().sendMessage(LGChatCompat.pinkMessage("Usage: /msg <player> <message...>"));
             return CompletableFuture.completedFuture(null);
         }
 
         String senderName = LGChatCompat.resolveSenderUsername(context.sender(), senderUuid);
 
         context.sender().sendMessage(LGChatCompat.pinkMessage("[To " + target.getUsername() + "] " + msg));
-        target.sendMessage(LGChatCompat.pinkMessage("[from " + senderName + "] " + msg));
+        target.sendMessage(LGChatCompat.pinkMessage("[From " + senderName + "] " + msg));
 
         return CompletableFuture.completedFuture(null);
     }
 
     // ------------------------------------------------------------
-    //  A) Fallback robusto: extrair "<mensagem...>" do input cru
+    //  A) Robust fallback: extract "<message...>" from raw input
     // ------------------------------------------------------------
     @Nullable
     private static String extractRemainder(String input) {
@@ -107,11 +108,11 @@ public final class MsgCommand extends AbstractCommand {
         String s = input.trim();
         if (s.startsWith("/")) s = s.substring(1);
 
-        // <cmd> <player> <resto...>
+        // <cmd> <player> <rest...>
         String[] parts = s.split("\\s+", 3);
         if (parts.length < 3) return null;
 
-        // não amarra no nome "msg" pra ser mais tolerante (aliases etc.)
+        // Don't hardcode "msg" to be more tolerant (aliases etc.)
         return parts[2];
     }
 
@@ -130,7 +131,7 @@ public final class MsgCommand extends AbstractCommand {
     }
 
     // ------------------------------------------------------------
-    //  B) Criar RequiredArg usando argType descoberto via reflection
+    //  B) Create RequiredArg using an argType discovered via reflection
     // ------------------------------------------------------------
     @SuppressWarnings("unchecked")
     private RequiredArg<String> withRequiredArgCompat(String name, String desc, Object argType) {
@@ -157,7 +158,7 @@ public final class MsgCommand extends AbstractCommand {
     }
 
     // ------------------------------------------------------------
-    //  C) Achar um ArgTypes “greedy/rest/message” mesmo que o nome não seja óbvio
+    //  C) Find a “greedy/rest/message” ArgTypes even if the name isn't obvious
     // ------------------------------------------------------------
     private static Object findGreedyLikeTextArgType() {
         Object base = ArgTypes.STRING;
@@ -199,7 +200,7 @@ public final class MsgCommand extends AbstractCommand {
                 score += scoreWord(ts, "rest", 15);
                 score += scoreWord(ts, "message", 10);
 
-                // bônus: se tiver isGreedy() e retornar true
+                // bonus: if it has isGreedy() and returns true
                 Boolean isGreedy = tryCallBoolean(v, "isGreedy", "greedy");
                 if (Boolean.TRUE.equals(isGreedy)) score += 100;
 
@@ -230,13 +231,13 @@ public final class MsgCommand extends AbstractCommand {
     }
 
     // ------------------------------------------------------------
-    //  D) Ativar modo greedy/pro “rest of line” (tentando em objetos internos)
+    //  D) Enable greedy / “rest of line” mode (tries internal objects)
     // ------------------------------------------------------------
     private static void tryEnableGreedyRecursively(Object root) {
         if (root == null) return;
         tryEnableGreedy(root);
 
-        // tenta em campos internos (1 nível) — sem fazer varredura profunda pra não ser perigoso
+        // Try inner fields (1 level) — no deep scan to avoid risky reflection
         for (Field f : root.getClass().getDeclaredFields()) {
             try {
                 if (Modifier.isStatic(f.getModifiers())) continue;
@@ -244,7 +245,7 @@ public final class MsgCommand extends AbstractCommand {
                 Object inner = f.get(root);
                 if (inner == null) continue;
 
-                // evita recursão inútil em tipos muito simples
+                // Avoid pointless recursion on very simple types
                 String cn = inner.getClass().getName();
                 if (cn.startsWith("java.") || cn.startsWith("javax.")) continue;
 
@@ -285,12 +286,12 @@ public final class MsgCommand extends AbstractCommand {
     }
 
     // ------------------------------------------------------------
-    //  E) FORÇAR aceitar argumentos extras (isso é o que destrava o “Expected 2, actual 7”)
+    //  E) FORCE accepting extra arguments (unlocks “Expected 2, actual 7”)
     // ------------------------------------------------------------
     private static void forceAllowTrailingArguments(Object cmd) {
         if (cmd == null) return;
 
-        // 1) tenta métodos comuns (mas agora bem mais flexível)
+        // 1) Try common methods (now much more flexible)
         for (Method m : cmd.getClass().getMethods()) {
             try {
                 String n = m.getName().toLowerCase(Locale.ROOT);
@@ -328,7 +329,7 @@ public final class MsgCommand extends AbstractCommand {
             } catch (Throwable ignored) { }
         }
 
-        // 2) se não achou método, seta fields prováveis no comando/superclasses
+        // 2) If no method was found, set likely fields on the command/superclasses
         for (Class<?> c = cmd.getClass(); c != null; c = c.getSuperclass()) {
             for (Field f : c.getDeclaredFields()) {
                 try {
@@ -361,7 +362,7 @@ public final class MsgCommand extends AbstractCommand {
                     if (aboutArgs && (f.getType() == int.class || f.getType() == Integer.class)) {
                         if (n.contains("max")) {
                             f.set(cmd, 9999);
-                            // não dá return aqui: pode existir também um boolean junto
+                            // No return here: there may also be a boolean alongside it
                         }
                     }
                 } catch (Throwable ignored) { }

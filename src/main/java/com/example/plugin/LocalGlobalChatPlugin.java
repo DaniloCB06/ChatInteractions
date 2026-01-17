@@ -21,27 +21,27 @@ import java.util.function.Consumer;
 public class LocalGlobalChatPlugin extends JavaPlugin {
 
     // =========================
-    // Persistência
+    // Persistence
     // =========================
     private static final String CONFIG_FILE_NAME = "localglobalchat.properties";
     private static final String PROP_LOCAL_RADIUS = "localRadius";
-    private static final String PROP_CHAT_ADMINS = "chatAdmins"; // csv de UUIDs
+    private static final String PROP_CHAT_ADMINS = "chatAdmins"; // CSV of UUIDs
 
     // =========================
-    // Raio configurável do chat local (default: 50 blocos)
+    // Configurable local chat radius (default: 50 blocks)
     // =========================
     private static volatile double localRadius = 50.0;
     private static volatile double localRadiusSq = localRadius * localRadius;
 
-    // TinyMessage/TinyMsg (se estiver instalado no servidor)
+    // TinyMessage/TinyMsg (if installed on the server)
     private static final String TINY_GLOBAL = "green";
     private static final String TINY_LOCAL = "yellow";
     private static final String TINY_TEXT = "white";
 
-    // modo do chat por jogador
+    // Chat mode per player
     private final Map<UUID, ChatMode> chatModes = new ConcurrentHashMap<>();
 
-    // debug por jogador (toggle /chatdebug)
+    // Debug per player (toggle /chatdebug)
     private final Map<UUID, Boolean> debugModes = new ConcurrentHashMap<>();
 
     // =========================
@@ -50,12 +50,12 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     public static final String PERM_CHAT_DISABLE = "localglobalchat.chatdisable";
     public static final String PERM_CHAT_BYPASS  = "localglobalchat.chatdisable.bypass";
 
-    // Admin list (bypass confiável via disco)
+    // Admin list (reliable bypass via disk)
     public static final String PERM_CHAT_ADMIN   = "localglobalchat.chatadmin";
 
     private final AtomicBoolean chatDisabled = new AtomicBoolean(false);
 
-    // ChatAdmins persistidos em disco (bypass e perm de admin do plugin)
+    // ChatAdmins persisted on disk (bypass + plugin admin permission)
     private final Set<UUID> chatAdmins = ConcurrentHashMap.newKeySet();
 
     public LocalGlobalChatPlugin(JavaPluginInit init) {
@@ -64,7 +64,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
     @Override
     protected void setup() {
-        // carrega config (localRadius + chatAdmins) antes de registrar comandos e antes do chat rodar
+        // Load config (localRadius + chatAdmins) before registering commands and before chat runs
         loadConfigFromDisk();
 
         getCommandRegistry().registerCommand(new GCommand(this));
@@ -75,19 +75,19 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         getCommandRegistry().registerCommand(new ClearChatCommand());
         getCommandRegistry().registerCommand(new ChatDisableCommand(this));
 
-        // >>> IMPORTANTE: registre SOMENTE o comando raiz (collection) /chatadmin
-        // (não registre ChatAdminAddCommand/Remove/List direto no registry)
+        // >>> IMPORTANT: register ONLY the root (collection) command /chatadmin
+        // (do not register ChatAdminAddCommand/Remove/List directly in the registry)
         getCommandRegistry().registerCommand(new ChatAdminCommand(this));
 
-        // Registro do chat via reflection
+        // Chat event registration via reflection
         registerEventListener(PlayerChatEvent.class, ev -> onChat((PlayerChatEvent) ev));
 
-        // (Opcional) tenta resetar para LOCAL quando o jogador entrar (se existir evento)
+        // (Optional) try to reset to LOCAL when the player joins (if such event exists)
         tryRegisterJoinResetToLocal();
     }
 
     // =========================================================
-    // API usada pelos comandos (modo/debug/radius)
+    // API used by commands (mode/debug/radius)
     // =========================================================
 
     ChatMode getMode(UUID uuid) {
@@ -106,7 +106,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         debugModes.put(uuid, !isDebug(uuid));
     }
 
-    // persiste no disco
+    // Persist to disk
     void setLocalRadius(int blocks) {
         applyLocalRadius(blocks);
         saveConfigToDisk();
@@ -117,24 +117,24 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // CHATADMINS API (usado por /chatadmin add/remove/list)
+    // CHATADMINS API (used by /chatadmin add/remove/list)
     // =========================================================
 
     public boolean canUseChatAdmin(CommandContext context) {
         Object sender = extractSender(context);
 
-        // Console sempre pode
+        // Console can always
         if (sender == null || !(sender instanceof PlayerRef)) return true;
 
         PlayerRef p = (PlayerRef) sender;
         UUID uuid = safeUuid(p);
         if (uuid != null && isChatAdmin(uuid)) return true;
 
-        // tenta permissões (se o provider expuser)
+        // Try permissions (if the provider exposes it)
         if (LGChatCompat.hasPermissionCompat(sender, PERM_CHAT_ADMIN)) return true;
         if (LGChatCompat.hasPermissionCompat(sender, PERM_CHAT_DISABLE)) return true;
 
-        // tenta op/admin via reflection
+        // Try op/admin via reflection
         return isAdminLevelCompat(p) || isUniverseOpCompat(p);
     }
 
@@ -143,12 +143,12 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         String t = token.trim();
         if (t.isEmpty()) return null;
 
-        // UUID direto
+        // Direct UUID
         try {
             return UUID.fromString(t);
         } catch (Throwable ignored) { }
 
-        // Username online
+        // Online username
         PlayerRef pr = findOnlinePlayerByUsername(t);
         if (pr != null) return safeUuid(pr);
 
@@ -187,7 +187,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // Implementação interna do raio
+    // Internal radius implementation
     // =========================================================
 
     private static void applyLocalRadius(int blocks) {
@@ -199,7 +199,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // Persistência em arquivo (radius + chatAdmins)
+    // File persistence (radius + chatAdmins)
     // =========================================================
 
     private void loadConfigFromDisk() {
@@ -218,9 +218,9 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
                 try {
                     int blocks = Integer.parseInt(rawRadius.trim());
                     applyLocalRadius(blocks);
-                    System.out.println("[LocalGlobalChat] localRadius carregado: " + getLocalRadiusInt());
+                    System.out.println("[LocalGlobalChat] localRadius loaded: " + getLocalRadiusInt());
                 } catch (Throwable ignored) {
-                    System.err.println("[LocalGlobalChat] ERRO ao parsear localRadius. Usando default 50.");
+                    System.err.println("[LocalGlobalChat] ERROR parsing localRadius. Using default 50.");
                 }
             }
 
@@ -239,9 +239,9 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
                 }
             }
 
-            System.out.println("[LocalGlobalChat] chatAdmins carregados: " + chatAdmins.size());
+            System.out.println("[LocalGlobalChat] chatAdmins loaded: " + chatAdmins.size());
         } catch (Throwable t) {
-            System.err.println("[LocalGlobalChat] ERRO ao carregar config.");
+            System.err.println("[LocalGlobalChat] ERROR loading config.");
         }
     }
 
@@ -252,7 +252,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
             Properties p = new Properties();
 
-            // preserva outras chaves
+            // Preserve other keys
             if (Files.exists(cfg)) {
                 try (InputStream in = Files.newInputStream(cfg)) {
                     p.load(in);
@@ -261,7 +261,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
             p.setProperty(PROP_LOCAL_RADIUS, String.valueOf(getLocalRadiusInt()));
 
-            // salva chatAdmins como CSV
+            // Save chatAdmins as CSV
             if (chatAdmins.isEmpty()) {
                 p.remove(PROP_CHAT_ADMINS);
             } else {
@@ -278,7 +278,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
                 p.store(out, "LocalGlobalChat config");
             }
         } catch (Throwable t) {
-            System.err.println("[LocalGlobalChat] ERRO ao salvar config (sem permissao de escrita?).");
+            System.err.println("[LocalGlobalChat] ERROR saving config (no write permission?).");
         }
     }
 
@@ -287,8 +287,8 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     /**
-     * Tenta achar uma pasta de dados do plugin via reflection.
-     * Se não achar, usa: ./plugins/LocalGlobalChat/
+     * Tries to find a plugin data folder via reflection.
+     * If not found, uses: ./plugins/LocalGlobalChat/
      */
     private Path getDataDirSafe() {
         Object r = invokeAny(this,
@@ -306,13 +306,13 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // Registro de eventos via reflection
+    // Event registration via reflection
     // =========================================================
 
     private void registerEventListener(Class<?> eventClass, Consumer<Object> handler) {
         Object registry = getEventRegistry();
         if (!tryRegister(registry, eventClass, handler)) {
-            System.err.println("[LocalGlobalChat] ERRO: nao consegui registrar evento: " + eventClass.getName());
+            System.err.println("[LocalGlobalChat] ERROR: could not register event: " + eventClass.getName());
         }
     }
 
@@ -388,7 +388,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // (Opcional) resetar para LOCAL ao entrar (se existir evento)
+    // (Optional) reset to LOCAL on join (if an event exists)
     // =========================================================
 
     private void tryRegisterJoinResetToLocal() {
@@ -410,13 +410,13 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
                 };
 
                 if (tryRegister(getEventRegistry(), joinEventClass, handler)) {
-                    System.out.println("[LocalGlobalChat] JoinEvent registrado: " + cn);
+                    System.out.println("[LocalGlobalChat] JoinEvent registered: " + cn);
                     return;
                 }
             } catch (Throwable ignored) { }
         }
 
-        System.out.println("[LocalGlobalChat] JoinEvent nao encontrado (ok). Default LOCAL ainda funciona.");
+        System.out.println("[LocalGlobalChat] JoinEvent not found (ok). Default LOCAL still works.");
     }
 
     private static PlayerRef extractPlayerRef(Object event) {
@@ -442,7 +442,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         boolean disabled = chatDisabled.get();
         boolean bypass = canBypassChatDisabled(sender);
 
-        // Debug mesmo quando bloqueado
+        // Debug even when blocked
         if (senderUuid != null && isDebug(senderUuid)) {
             sender.sendMessage(Message.raw(
                     "DEBUG blocked=" + (disabled && !bypass) +
@@ -454,11 +454,11 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
             ));
         }
 
-        // Se chat estiver desativado e o jogador NÃO tiver bypass -> bloqueia
+        // If chat is disabled and the player has NO bypass -> block
         if (disabled && !bypass) {
             try { event.getTargets().clear(); } catch (Throwable ignored) { }
             cancelEventCompat(event);
-            sender.sendMessage(systemColor("red", "O chat está desativado no momento"));
+            sender.sendMessage(systemColor("red", "Chat is currently disabled."));
             return;
         }
 
@@ -466,7 +466,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
         event.setFormatter((ignoredViewer, message) -> formatChat(mode, sender.getUsername(), message));
 
-        // Local: filtra targets por distância
+        // Local: filter targets by distance
         if (mode == ChatMode.LOCAL) {
             UUID senderWorld = sender.getWorldUuid();
 
@@ -487,7 +487,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         }
     }
 
-    // toggle seguro sem updateAndGet
+    // Safe toggle without updateAndGet
     boolean toggleChatDisabled() {
         while (true) {
             boolean cur = chatDisabled.get();
@@ -499,14 +499,14 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     private boolean canBypassChatDisabled(PlayerRef p) {
         UUID u = safeUuid(p);
 
-        // bypass por DISCO (chatAdmins)
+        // Disk bypass (chatAdmins)
         if (u != null && isChatAdmin(u)) return true;
 
-        // tenta permissões (se provider expuser)
+        // Try permissions (if the provider exposes it)
         if (LGChatCompat.hasPermissionCompat(p, PERM_CHAT_DISABLE, false)) return true;
         if (LGChatCompat.hasPermissionCompat(p, PERM_CHAT_BYPASS, false)) return true;
 
-        // tenta op/admin via reflection
+        // Try op/admin via reflection
         return isAdminLevelCompat(p) || isUniverseOpCompat(p);
     }
 
@@ -535,7 +535,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     private boolean isUniverseOpCompat(PlayerRef p) {
         if (p == null) return false;
 
-        // alguns builds expõem direto no PlayerRef
+        // Some builds expose it directly on PlayerRef
         for (String mn : new String[]{"isUniverseOperator", "isUniverseOp", "isOperator"}) {
             try {
                 Method m = p.getClass().getMethod(mn);
@@ -544,7 +544,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
             } catch (Throwable ignored) { }
         }
 
-        // fallback: tenta Universe.get().isOperator(uuid) ou algo similar
+        // Fallback: try Universe.get().isOperator(uuid) or similar
         try {
             UUID u = safeUuid(p);
             if (u == null) return false;
@@ -569,7 +569,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         broadcastCompat(msg);
     }
 
-    // Mensagem colorida (TinyMsg se existir; fallback §)
+    // Colored message (TinyMsg if available; fallback to §)
     static Message systemColor(String tinyColor, String text) {
         String safe = LGChatCompat.tinySafe(text);
         String tiny = "<color:" + tinyColor + ">" + safe + "</color>";
@@ -585,7 +585,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         return Message.raw(legacy + text + "§r");
     }
 
-    // Broadcast compatível via reflection (Universe / lista de players)
+    // Broadcast compatible via reflection (Universe / player list)
     private static void broadcastCompat(Message msg) {
         try {
             Class<?> uniCl = Class.forName("com.hypixel.hytale.server.core.universe.Universe");
@@ -617,7 +617,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         } catch (Throwable ignored) { }
     }
 
-    // Cancelar evento via reflection (compat entre builds)
+    // Cancel event via reflection (compat across builds)
     private static void cancelEventCompat(Object event) {
         if (event == null) return;
 
@@ -653,7 +653,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // Posição (reflection pra suportar builds diferentes)
+    // Position (reflection to support different builds)
     // =========================================================
 
     private static double getX(PlayerRef p) { return getAxis(p, "x"); }
@@ -697,7 +697,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     }
 
     // =========================================================
-    // Sender / Players online (compat)
+    // Sender / Online players (compat)
     // =========================================================
 
     private static Object extractSender(CommandContext context) {

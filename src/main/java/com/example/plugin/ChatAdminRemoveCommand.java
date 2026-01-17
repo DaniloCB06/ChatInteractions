@@ -26,7 +26,7 @@ public class ChatAdminRemoveCommand extends CommandBase {
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         if (!plugin.canUseChatAdmin(context)) {
-            context.sendMessage(LocalGlobalChatPlugin.systemColor("red", "Você não tem permissão."));
+            context.sendMessage(LocalGlobalChatPlugin.systemColor("red", "You don't have permission."));
             return;
         }
 
@@ -35,7 +35,7 @@ public class ChatAdminRemoveCommand extends CommandBase {
 
         if (uuid == null) {
             context.sendMessage(LocalGlobalChatPlugin.systemColor("red",
-                    "Player não encontrado online e UUID inválido. Use um UUID para offline."));
+                    "Player not found online and invalid UUID. Use a UUID for offline players."));
             return;
         }
 
@@ -44,9 +44,9 @@ public class ChatAdminRemoveCommand extends CommandBase {
 
         if (removed) {
             context.sendMessage(LocalGlobalChatPlugin.systemColor("green",
-                    "Removido do chatadmin: " + uuid + (name != null ? " (" + name + ")" : "")));
+                    "Removed from chatadmin: " + uuid + (name != null ? " (" + name + ")" : "")));
         } else {
-            context.sendMessage(Message.raw("Esse UUID não estava na lista: " + uuid));
+            context.sendMessage(Message.raw("That UUID was not on the list: " + uuid));
         }
     }
 }

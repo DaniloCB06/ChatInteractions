@@ -22,13 +22,13 @@ public class ChatAdminListCommand extends CommandBase {
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         if (!plugin.canUseChatAdmin(context)) {
-            context.sendMessage(LocalGlobalChatPlugin.systemColor("red", "Você não tem permissão."));
+            context.sendMessage(LocalGlobalChatPlugin.systemColor("red", "You don't have permission."));
             return;
         }
 
         Set<UUID> list = plugin.getChatAdminsSnapshot();
         if (list.isEmpty()) {
-            context.sendMessage(Message.raw("ChatAdmins: (vazio)"));
+            context.sendMessage(Message.raw("ChatAdmins: (empty)"));
             return;
         }
 
