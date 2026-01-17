@@ -569,21 +569,18 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         broadcastCompat(msg);
     }
 
-    // Colored message (TinyMsg if available; fallback to §)
+    // Colored message (TinyMsg if available; fallback = plain RAW with NO colors)
     static Message systemColor(String tinyColor, String text) {
         String safe = LGChatCompat.tinySafe(text);
         String tiny = "<color:" + tinyColor + ">" + safe + "</color>";
+
         Message parsed = LGChatCompat.tryTinyMsgParse(tiny);
         if (parsed != null) return parsed;
 
-        String legacy;
-        if ("red".equalsIgnoreCase(tinyColor)) legacy = "§c";
-        else if ("green".equalsIgnoreCase(tinyColor)) legacy = "§a";
-        else if ("yellow".equalsIgnoreCase(tinyColor)) legacy = "§e";
-        else legacy = "§f";
-
-        return Message.raw(legacy + text + "§r");
+        // Sem TinyMessage: NADA de cor, NADA de §r/§c
+        return Message.raw(text);
     }
+
 
     // Broadcast compatible via reflection (Universe / player list)
     private static void broadcastCompat(Message msg) {

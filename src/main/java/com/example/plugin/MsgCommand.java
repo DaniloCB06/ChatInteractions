@@ -1,5 +1,6 @@
 package com.example.plugin;
 
+import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
@@ -57,18 +58,28 @@ public final class MsgCommand extends AbstractCommand {
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
         UUID senderUuid = context.sender().getUuid();
         if (senderUuid == null) {
-            context.sender().sendMessage(LGChatCompat.pinkMessage("This command can only be used by players."));
+            // With TinyMessage -> colored, without -> plain
+            context.sender().sendMessage(tinyOrPlain(
+                    "<color:light_purple>This command can only be used by players.</color>",
+                    "This command can only be used by players."
+            ));
             return CompletableFuture.completedFuture(null);
         }
 
         PlayerRef target = context.get(targetArg);
         if (target == null || target.getUuid() == null) {
-            context.sender().sendMessage(LGChatCompat.pinkMessage("Player not found (online)."));
+            context.sender().sendMessage(tinyOrPlain(
+                    "<color:light_purple>Player not found (online).</color>",
+                    "Player not found (online)."
+            ));
             return CompletableFuture.completedFuture(null);
         }
 
         if (Objects.equals(senderUuid, target.getUuid())) {
-            context.sender().sendMessage(LGChatCompat.pinkMessage("You can't send /msg to yourself."));
+            context.sender().sendMessage(tinyOrPlain(
+                    "<color:light_purple>You can't send /msg to yourself.</color>",
+                    "You can't send /msg to yourself."
+            ));
             return CompletableFuture.completedFuture(null);
         }
 
@@ -86,16 +97,41 @@ public final class MsgCommand extends AbstractCommand {
         }
 
         if (msg == null || msg.trim().isEmpty()) {
-            context.sender().sendMessage(LGChatCompat.pinkMessage("Usage: /msg <player> <message...>"));
+            context.sender().sendMessage(tinyOrPlain(
+                    "<color:light_purple>Usage: /msg <player> <message...></color>",
+                    "Usage: /msg <player> <message...>"
+            ));
             return CompletableFuture.completedFuture(null);
         }
 
         String senderName = LGChatCompat.resolveSenderUsername(context.sender(), senderUuid);
 
-        context.sender().sendMessage(LGChatCompat.pinkMessage("[To " + target.getUsername() + "] " + msg));
-        target.sendMessage(LGChatCompat.pinkMessage("[From " + senderName + "] " + msg));
+        // Safe for TinyMessage (escape < > etc.)
+        String safeTarget = LGChatCompat.tinySafe(target.getUsername());
+        String safeSender = LGChatCompat.tinySafe(senderName);
+        String safeMsg    = LGChatCompat.tinySafe(msg);
+
+        context.sender().sendMessage(tinyOrPlain(
+                "<color:light_purple>[To </color><color:yellow>" + safeTarget + "</color><color:light_purple>] </color>"
+                        + "<color:white>" + safeMsg + "</color>",
+                "[To " + target.getUsername() + "] " + msg
+        ));
+
+        target.sendMessage(tinyOrPlain(
+                "<color:light_purple>[From </color><color:yellow>" + safeSender + "</color><color:light_purple>] </color>"
+                        + "<color:white>" + safeMsg + "</color>",
+                "[From " + senderName + "] " + msg
+        ));
 
         return CompletableFuture.completedFuture(null);
+    }
+
+    // ------------------------------------------------------------
+    //  Helper: With TinyMessage -> parsed, without -> plain raw
+    // ------------------------------------------------------------
+    private static Message tinyOrPlain(String tinyMarkup, String plainText) {
+        Message parsed = LGChatCompat.tryTinyMsgParse(tinyMarkup);
+        return (parsed != null) ? parsed : Message.raw(plainText);
     }
 
     // ------------------------------------------------------------
