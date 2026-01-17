@@ -1,4 +1,4 @@
-# LocalGlobalChat (Hytale Plugin)
+# ChatInteractions (Hytale Plugin)
 
 Chat plugin for Hytale featuring **Global/Local chat**, **private messaging**, **admin tools**, a **configurable local chat radius**, and an **optional chat lockdown mode** (allowlist).
 
