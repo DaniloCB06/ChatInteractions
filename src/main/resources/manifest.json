@@ -1,9 +1,11 @@
 {
   "Group": "com.example",
   "Name": "ChatInteractions",
-  "Version": "1.1.0",
+  "Version": "1.1.1",
+  "Authors": [
+    { "Name": "FoToom" }
+  ],
   "Main": "com.example.plugin.LocalGlobalChatPlugin",
-  "Author": "FoToom",
   "OptionalDependencies": {
     "Zoltus:TinyMessage": "*"
   }
