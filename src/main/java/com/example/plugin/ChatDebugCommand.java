@@ -20,6 +20,8 @@ public final class ChatDebugCommand extends AbstractCommand {
         this.plugin = plugin;
 
         LGChatCompat.requirePermissionNode(this, PERM_CHATDEBUG);
+
+        addAliases("cdg");
     }
 
     @Override
@@ -44,7 +46,7 @@ public final class ChatDebugCommand extends AbstractCommand {
         plugin.toggleDebug(uuid);
         boolean now = plugin.isDebug(uuid);
 
-        context.sender().sendMessage(Message.raw("ChatDebug: " + (now ? "ON" : "OFF")));
+        context.sender().sendMessage(plugin.buildChatDebugMessage(context.sender(), uuid, now));
         return CompletableFuture.completedFuture(null);
     }
 }

@@ -41,6 +41,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
     // Warning colors
     private static final String TINY_WARN_ORANGE = "orange";
+    private static final String TINY_WARN_RED = "red";
 
     // Chat mode per player
     private final Map<UUID, ChatMode> chatModes = new ConcurrentHashMap<>();
@@ -49,7 +50,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     private final Map<UUID, Boolean> debugModes = new ConcurrentHashMap<>();
 
     // =========================
-    // Chat Disable (global)
+    // Chat Disable
     // =========================
     public static final String PERM_CHAT_DISABLE = "localglobalchat.chatdisable";
     public static final String PERM_CHAT_BYPASS  = "localglobalchat.chatdisable.bypass";
@@ -57,7 +58,9 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     // Admin list (reliable bypass via disk)
     public static final String PERM_CHAT_ADMIN   = "localglobalchat.chatadmin";
 
-    private final AtomicBoolean chatDisabled = new AtomicBoolean(false);
+    private final AtomicBoolean globalChatDisabled = new AtomicBoolean(false);
+    private final AtomicBoolean localChatDisabled = new AtomicBoolean(false);
+    private final AtomicBoolean msgDisabled = new AtomicBoolean(false);
 
     // ChatAdmins persisted on disk (bypass + plugin admin permission)
     private final Set<UUID> chatAdmins = ConcurrentHashMap.newKeySet();
@@ -84,7 +87,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
 
         getCommandRegistry().registerCommand(new GCommand(this));
         getCommandRegistry().registerCommand(new LCommand(this));
-        getCommandRegistry().registerCommand(new MsgCommand());
+        getCommandRegistry().registerCommand(new MsgCommand(this));
         getCommandRegistry().registerCommand(new ChatDebugCommand(this));
         getCommandRegistry().registerCommand(new LocalRadiusCommand(this));
         getCommandRegistry().registerCommand(new ClearChatCommand());
@@ -154,14 +157,14 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         int m = clampWarningMinutes(minutes);
 
         if (m == 0) {
-            String tiny = "<color:" + TINY_WARN_ORANGE + ">Chat warning has been disabled.</color>";
+            String tiny = "<color:" + TINY_WARN_RED + ">Chat warning has been disabled.</color>";
             String plain = "Chat warning has been disabled.";
 
             Message parsed = LGChatCompat.tryTinyMsgParse(tiny);
             return (parsed != null) ? parsed : Message.raw(plain);
         }
 
-        String tiny = "<color:" + TINY_WARN_ORANGE + ">Chat warning interval set to " + m + " minute(s).</color>";
+        String tiny = "<color:" + TINY_WARN_RED + ">Chat warning interval set to " + m + " minute(s).</color>";
         String plain = "Chat warning interval set to " + m + " minute(s).";
 
         Message parsed = LGChatCompat.tryTinyMsgParse(tiny);
@@ -589,31 +592,28 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     private void onChat(PlayerChatEvent event) {
         PlayerRef sender = event.getSender();
         UUID senderUuid = safeUuid(sender);
+        ChatMode mode = (senderUuid != null) ? getMode(senderUuid) : ChatMode.LOCAL;
 
-        boolean disabled = chatDisabled.get();
+        boolean disabledGlobal = globalChatDisabled.get();
+        boolean disabledLocal = localChatDisabled.get();
         boolean bypass = canBypassChatDisabled(sender);
+        boolean disabledForMode = (mode == ChatMode.GLOBAL) ? disabledGlobal : disabledLocal;
 
         // Debug even when blocked
         if (senderUuid != null && isDebug(senderUuid)) {
-            sender.sendMessage(Message.raw(
-                    "DEBUG blocked=" + (disabled && !bypass) +
-                            " chatDisabled=" + disabled +
-                            " diskAdmin=" + (senderUuid != null && isChatAdmin(senderUuid)) +
-                            " perm.disable=" + LGChatCompat.hasPermissionCompat(sender, PERM_CHAT_DISABLE) +
-                            " perm.bypass=" + LGChatCompat.hasPermissionCompat(sender, PERM_CHAT_BYPASS) +
-                            " op/admin=" + (isAdminLevelCompat(sender) || isUniverseOpCompat(sender))
-            ));
+            sender.sendMessage(buildChatDebugMessage(sender, senderUuid, true));
         }
 
-        // If chat is disabled and the player has NO bypass -> block
-        if (disabled && !bypass) {
+        // If chat is disabled for this mode and the player has NO bypass -> block
+        if (disabledForMode && !bypass) {
             try { event.getTargets().clear(); } catch (Throwable ignored) { }
             cancelEventCompat(event);
-            sender.sendMessage(systemColor("red", "Chat is currently disabled."));
+            String msg = (mode == ChatMode.GLOBAL)
+                    ? "Global chat is currently disabled."
+                    : "Local chat is currently disabled.";
+            sender.sendMessage(systemColor("red", msg));
             return;
         }
-
-        ChatMode mode = (senderUuid != null) ? getMode(senderUuid) : ChatMode.LOCAL;
 
         event.setFormatter((ignoredViewer, message) -> formatChat(mode, sender.getUsername(), message));
 
@@ -638,24 +638,136 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         }
     }
 
-    // Safe toggle without updateAndGet
-    boolean toggleChatDisabled() {
+    // Safe toggles without updateAndGet
+    boolean togglePublicChatDisabled() {
+        boolean next = !(globalChatDisabled.get() && localChatDisabled.get());
+        globalChatDisabled.set(next);
+        localChatDisabled.set(next);
+        return next;
+    }
+
+    boolean toggleGlobalChatDisabled() {
+        return toggleAtomic(globalChatDisabled);
+    }
+
+    boolean toggleLocalChatDisabled() {
+        return toggleAtomic(localChatDisabled);
+    }
+
+    boolean toggleMsgDisabled() {
+        return toggleAtomic(msgDisabled);
+    }
+
+    boolean isGlobalChatDisabled() {
+        return globalChatDisabled.get();
+    }
+
+    boolean isLocalChatDisabled() {
+        return localChatDisabled.get();
+    }
+
+    boolean isMsgDisabled() {
+        return msgDisabled.get();
+    }
+
+    Message buildChatDebugMessage(Object sender, UUID senderUuid, boolean debugEnabled) {
+        ChatMode mode = (senderUuid != null) ? getMode(senderUuid) : ChatMode.LOCAL;
+
+        boolean globalDisabled = isGlobalChatDisabled();
+        boolean localDisabled = isLocalChatDisabled();
+        boolean msgDisabledNow = isMsgDisabled();
+        boolean isChatAdmin = (senderUuid != null && isChatAdmin(senderUuid));
+        boolean isAdminOp = isAdminOrOp(sender);
+
+        String modeText = (mode == ChatMode.GLOBAL) ? "GLOBAL" : "LOCAL";
+        String modeColor = (mode == ChatMode.GLOBAL) ? "green" : "yellow";
+
+        String globalStatus = globalDisabled ? "DISABLED" : "ENABLED";
+        String localStatus = localDisabled ? "DISABLED" : "ENABLED";
+        String msgStatus = msgDisabledNow ? "DISABLED" : "ENABLED";
+
+        int warningMins = getChatWarningMinutes();
+        String warningText = (warningMins <= 0) ? "DISABLED" : (warningMins + " minute(s)");
+
+        Integer pingMs = tryGetPingMillis(sender);
+        String pingText = (pingMs != null) ? (pingMs + " ms") : "N/A";
+
+        String tiny =
+                "<color:gray>ChatDebug: " + (debugEnabled ? "ON" : "OFF") + "</color>\n" +
+                "Mode: <color:" + modeColor + ">" + modeText + "</color>\n" +
+                "<color:green>Global Chat: " + globalStatus + "</color>\n" +
+                "<color:yellow>Local Chat: " + localStatus + "</color>\n" +
+                "<color:#ff55ff>Private messages: " + msgStatus + "</color>\n" +
+                "<color:red>ChatAdmin: " + (isChatAdmin ? "YES" : "NO") + "</color>\n" +
+                "<color:#1E3A8A>Admin/Op: " + (isAdminOp ? "YES" : "NO") + "</color>\n" +
+                "<color:#7EC8FF>Warning: " + warningText + "</color>\n" +
+                "<color:white>Ping: " + pingText + "</color>";
+
+        String plain =
+                "ChatDebug: " + (debugEnabled ? "ON" : "OFF") + "\n" +
+                "Mode: " + modeText + "\n" +
+                "Global Chat: " + globalStatus + "\n" +
+                "Local Chat: " + localStatus + "\n" +
+                "Private messages: " + msgStatus + "\n" +
+                "ChatAdmin: " + (isChatAdmin ? "YES" : "NO") + "\n" +
+                "Admin/Op: " + (isAdminOp ? "YES" : "NO") + "\n" +
+                "Warning: " + warningText + "\n" +
+                "Ping: " + pingText;
+
+        Message parsed = LGChatCompat.tryTinyMsgParse(tiny);
+        return (parsed != null) ? parsed : Message.raw(plain);
+    }
+
+    private static boolean toggleAtomic(AtomicBoolean ref) {
         while (true) {
-            boolean cur = chatDisabled.get();
+            boolean cur = ref.get();
             boolean next = !cur;
-            if (chatDisabled.compareAndSet(cur, next)) return next;
+            if (ref.compareAndSet(cur, next)) return next;
         }
     }
 
-    private boolean canBypassChatDisabled(PlayerRef p) {
-        UUID u = safeUuid(p);
+    boolean canBypassChatDisabled(Object sender) {
+        UUID u = extractUuidCompat(sender);
+        PlayerRef pr = extractPlayerRefCompat(sender);
+        if (u == null && pr != null) u = safeUuid(pr);
 
         // Disk bypass (chatAdmins)
         if (u != null && isChatAdmin(u)) return true;
 
-        // Try permissions (if the provider exposes it)
-        if (LGChatCompat.hasPermissionCompat(p, PERM_CHAT_DISABLE, false)) return true;
-        if (LGChatCompat.hasPermissionCompat(p, PERM_CHAT_BYPASS, false)) return true;
+        // Try admin/op on PlayerRef (if available)
+        if (pr != null) {
+            if (isAdminLevelCompat(pr) || isUniverseOpCompat(pr)) return true;
+        }
+
+        // Last chance: boolean methods on sender itself
+        if (hasTrueBooleanMethod(sender,
+                "isAdmin", "isOperator", "isOp", "isUniverseOperator", "isUniverseOp")) {
+            return true;
+        }
+
+        return false;
+    }
+
+    boolean isAdminOrOp(Object sender) {
+        PlayerRef pr = extractPlayerRefCompat(sender);
+        UUID u = extractUuidCompat(sender);
+        if (pr == null) {
+            if (u != null) pr = findOnlinePlayerByUuid(u);
+            if (pr == null && u != null && (isUniverseOpCompat(u) || isInAdminGroup(u))) return true;
+        }
+
+        if (pr != null && (isAdminLevelCompat(pr) || isUniverseOpCompat(pr))) return true;
+        if (u != null && isInAdminGroup(u)) return true;
+
+        return hasTrueBooleanMethod(sender,
+                "isAdmin", "isOperator", "isOp", "isUniverseOperator", "isUniverseOp");
+    }
+
+    boolean canBypassChatDisabled(PlayerRef p) {
+        UUID u = safeUuid(p);
+
+        // Disk bypass (chatAdmins)
+        if (u != null && isChatAdmin(u)) return true;
 
         // Try op/admin via reflection
         return isAdminLevelCompat(p) || isUniverseOpCompat(p);
@@ -714,6 +826,73 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         } catch (Throwable ignored) { }
 
         return false;
+    }
+
+    private boolean isUniverseOpCompat(UUID uuid) {
+        if (uuid == null) return false;
+        try {
+            Class<?> uniCl = Class.forName("com.hypixel.hytale.server.core.universe.Universe");
+            Object uni = uniCl.getMethod("get").invoke(null);
+            if (uni == null) return false;
+
+            for (String mn : new String[]{"isOperator", "isOp", "isPlayerOperator", "isUniverseOperator"}) {
+                try {
+                    Method m = uni.getClass().getMethod(mn, UUID.class);
+                    Object r = m.invoke(uni, uuid);
+                    if (r instanceof Boolean b) return b;
+                } catch (Throwable ignored) { }
+            }
+        } catch (Throwable ignored) { }
+
+        return false;
+    }
+
+    private static boolean isInAdminGroup(UUID uuid) {
+        Set<String> groups = getUserGroupsCompat(uuid);
+        if (groups.isEmpty()) return false;
+
+        for (String g : groups) {
+            if (g == null) continue;
+            String v = g.trim().toLowerCase(Locale.ROOT);
+            if (v.equals("op") || v.equals("admin") || v.equals("administrator") || v.equals("owner")) return true;
+        }
+        return false;
+    }
+
+    private static Set<String> getUserGroupsCompat(UUID uuid) {
+        if (uuid == null) return Collections.emptySet();
+
+        try {
+            Class<?> pmCl = Class.forName("com.hypixel.hytale.server.core.permissions.PermissionsModule");
+            Object pm = pmCl.getMethod("get").invoke(null);
+            if (pm == null) return Collections.emptySet();
+
+            for (String mn : new String[]{"getGroupsForUser", "getGroupsOfUser", "getUserGroups", "getGroupsByUser"}) {
+                try {
+                    Method m = pm.getClass().getMethod(mn, UUID.class);
+                    Object r = m.invoke(pm, uuid);
+                    return toStringSet(r);
+                } catch (Throwable ignored) { }
+            }
+        } catch (Throwable ignored) { }
+
+        return Collections.emptySet();
+    }
+
+    private static Set<String> toStringSet(Object src) {
+        if (src == null) return Collections.emptySet();
+
+        Set<String> out = new HashSet<>();
+        if (src instanceof Iterable<?> it) {
+            for (Object o : it) if (o != null) out.add(String.valueOf(o));
+            return out;
+        }
+        if (src instanceof Object[] arr) {
+            for (Object o : arr) if (o != null) out.add(String.valueOf(o));
+            return out;
+        }
+        out.add(String.valueOf(src));
+        return out;
     }
 
     void broadcastSystemMessage(Message msg) {
@@ -858,6 +1037,88 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
             return senderM.invoke(context);
         } catch (Throwable ignored) { }
         return null;
+    }
+
+    private static PlayerRef extractPlayerRefCompat(Object sender) {
+        if (sender instanceof PlayerRef pr) return pr;
+        if (sender == null) return null;
+
+        for (String mn : new String[]{"getPlayer", "player", "asPlayer", "getSender", "sender"}) {
+            try {
+                Method m = sender.getClass().getMethod(mn);
+                Object r = m.invoke(sender);
+                if (r instanceof PlayerRef pr) return pr;
+            } catch (Throwable ignored) { }
+        }
+        return null;
+    }
+
+    private static UUID extractUuidCompat(Object sender) {
+        if (sender == null) return null;
+        if (sender instanceof PlayerRef pr) return safeUuid(pr);
+
+        for (String mn : new String[]{"getUuid", "uuid", "getUniqueId", "uniqueId"}) {
+            try {
+                Method m = sender.getClass().getMethod(mn);
+                Object r = m.invoke(sender);
+                if (r instanceof UUID u) return u;
+            } catch (Throwable ignored) { }
+        }
+
+        PlayerRef pr = extractPlayerRefCompat(sender);
+        return (pr != null) ? safeUuid(pr) : null;
+    }
+
+    private static Integer tryGetPingMillis(Object sender) {
+        Integer v = tryGetPingFromObject(sender);
+        if (v != null) return v;
+
+        PlayerRef pr = extractPlayerRefCompat(sender);
+        if (pr != null) {
+            v = tryGetPingFromObject(pr);
+            if (v != null) return v;
+
+            Object packet = invokeAny(pr, "getPacketHandler", "packetHandler");
+            v = tryGetPingFromObject(packet);
+            if (v != null) return v;
+        }
+
+        return null;
+    }
+
+    private static Integer tryGetPingFromObject(Object obj) {
+        if (obj == null) return null;
+
+        for (String mn : new String[]{
+                "getPing", "ping",
+                "getLatency", "latency",
+                "getLatencyMs", "latencyMs",
+                "getRtt", "rtt",
+                "getRoundTripTime", "roundTripTime"
+        }) {
+            try {
+                Method m = obj.getClass().getMethod(mn);
+                Object r = m.invoke(obj);
+                if (r instanceof Number n) return n.intValue();
+                if (r instanceof String s) {
+                    try { return Integer.parseInt(s.trim()); } catch (Throwable ignored) { }
+                }
+            } catch (Throwable ignored) { }
+        }
+
+        return null;
+    }
+
+    private static boolean hasTrueBooleanMethod(Object obj, String... names) {
+        if (obj == null) return false;
+        for (String mn : names) {
+            try {
+                Method m = obj.getClass().getMethod(mn);
+                Object r = m.invoke(obj);
+                if (r instanceof Boolean b && b) return true;
+            } catch (Throwable ignored) { }
+        }
+        return false;
     }
 
     private static UUID safeUuid(PlayerRef p) {

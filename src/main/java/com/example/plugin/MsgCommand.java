@@ -19,11 +19,13 @@ import java.util.concurrent.CompletableFuture;
 
 public final class MsgCommand extends AbstractCommand {
 
+    private final LocalGlobalChatPlugin plugin;
     private final RequiredArg<PlayerRef> targetArg;
     private final RequiredArg<String> messageArg;
 
-    public MsgCommand() {
+    public MsgCommand(LocalGlobalChatPlugin plugin) {
         super("msg", "Sends a private message to a player");
+        this.plugin = plugin;
 
         LGChatCompat.relaxCommandPermissions(this);
 
@@ -62,6 +64,14 @@ public final class MsgCommand extends AbstractCommand {
             context.sender().sendMessage(tinyOrPlain(
                     "<color:light_purple>This command can only be used by players.</color>",
                     "This command can only be used by players."
+            ));
+            return CompletableFuture.completedFuture(null);
+        }
+
+        if (plugin.isMsgDisabled() && !plugin.canBypassChatDisabled(context.sender())) {
+            context.sender().sendMessage(tinyOrPlain(
+                    "<color:red>Private messages are currently disabled.</color>",
+                    "Private messages are currently disabled."
             ));
             return CompletableFuture.completedFuture(null);
         }
