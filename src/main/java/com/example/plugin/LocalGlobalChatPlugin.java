@@ -260,11 +260,12 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
     public boolean canUseChatAdmin(CommandContext context) {
         Object sender = extractSender(context);
 
-        // Console can always
-        if (sender == null || !(sender instanceof PlayerRef)) return true;
+        // Console / non-player senders can always
+        if (sender == null || LGChatCompat.isConsoleSender(sender)) return true;
 
-        PlayerRef p = (PlayerRef) sender;
-        UUID uuid = safeUuid(p);
+        UUID uuid = extractUuidCompat(sender);
+        if (uuid == null) return true;
+
         if (uuid != null && isChatAdmin(uuid)) return true;
 
         // Try permissions (if the provider exposes it)
@@ -272,7 +273,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         if (LGChatCompat.hasPermissionCompat(sender, PERM_CHAT_DISABLE)) return true;
 
         // Try op/admin via reflection
-        return isAdminLevelCompat(p) || isUniverseOpCompat(p);
+        return isAdminOrOp(sender);
     }
 
     public UUID resolvePlayerOrUuid(String token) {
@@ -1043,7 +1044,7 @@ public class LocalGlobalChatPlugin extends JavaPlugin {
         if (sender instanceof PlayerRef pr) return pr;
         if (sender == null) return null;
 
-        for (String mn : new String[]{"getPlayer", "player", "asPlayer", "getSender", "sender"}) {
+        for (String mn : new String[]{"getPlayerRef", "getPlayer", "player", "asPlayer", "getSender", "sender"}) {
             try {
                 Method m = sender.getClass().getMethod(mn);
                 Object r = m.invoke(sender);

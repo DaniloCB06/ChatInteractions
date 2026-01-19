@@ -46,8 +46,10 @@ public final class ChatWarningCommand extends AbstractCommand {
     public boolean hasPermission(CommandSender sender) {
         if (sender == null) return false;
 
+        if (LGChatCompat.isConsoleSender(sender)) return true;
+
         UUID senderUuid = sender.getUuid();
-        if (senderUuid == null) return true; // console
+        if (senderUuid == null) return true;
 
         if (plugin.isChatAdmin(senderUuid)) return true;
 
@@ -59,10 +61,9 @@ public final class ChatWarningCommand extends AbstractCommand {
     @Override
     @Nullable
     protected CompletableFuture<Void> execute(@Nonnull CommandContext context) {
-        UUID senderUuid = context.sender().getUuid();
-        if (senderUuid != null && !plugin.isChatAdmin(senderUuid)) {
+        if (!hasPermission(context.sender())) {
             context.sender().sendMessage(LocalGlobalChatPlugin.systemColor("red",
-                    "Only chatadmins can use this command. Ask a staff member to add you with /chatadmin add <player|uuid>."));
+                    "Only chatadmins or admins/operators can use this command. Ask a staff member to add you with /chatadmin add <player|uuid>."));
             return CompletableFuture.completedFuture(null);
         }
 

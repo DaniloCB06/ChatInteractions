@@ -20,7 +20,7 @@ public class ChatAdminAddCommand extends CommandBase {
         super("add", "localglobalchat.commands.chatadmin.add.desc");
         this.plugin = plugin;
 
-        LGChatCompat.requirePermissionNode(this, LocalGlobalChatPlugin.PERM_CHAT_ADMIN);
+        LGChatCompat.relaxCommandPermissions(this);
     }
 
     @Override

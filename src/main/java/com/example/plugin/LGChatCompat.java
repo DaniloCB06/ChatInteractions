@@ -148,6 +148,27 @@ public final class LGChatCompat {
         return fallbackIfUnknown;
     }
 
+    public static boolean isConsoleSender(Object sender) {
+        if (sender == null) return true;
+
+        try {
+            if ("com.hypixel.hytale.server.core.console.ConsoleSender"
+                    .equals(sender.getClass().getName())) {
+                return true;
+            }
+        } catch (Throwable ignored) { }
+
+        try {
+            Method m = sender.getClass().getMethod("getUuid");
+            Object r = m.invoke(sender);
+            if (r instanceof UUID u) {
+                return u.getMostSignificantBits() == 0L && u.getLeastSignificantBits() == 0L;
+            }
+        } catch (Throwable ignored) { }
+
+        return false;
+    }
+
     // =========================================================
     // Resolve sender name (CommandSender may not have getUsername)
     // =========================================================

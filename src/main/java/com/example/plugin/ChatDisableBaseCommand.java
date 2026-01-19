@@ -20,10 +20,15 @@ abstract class ChatDisableBaseCommand extends CommandBase {
     protected boolean canUse(@Nonnull CommandContext context) {
         Object sender = extractSender(context);
 
+        if (sender == null || LGChatCompat.isConsoleSender(sender)) return true;
+
         UUID senderUuid = extractUuid(sender);
-        if (sender == null || senderUuid == null) return true;
+        if (senderUuid == null) return true;
 
         if (plugin.isChatAdmin(senderUuid)) return true;
+
+        if (LGChatCompat.hasPermissionCompat(sender, LocalGlobalChatPlugin.PERM_CHAT_ADMIN)) return true;
+        if (LGChatCompat.hasPermissionCompat(sender, LocalGlobalChatPlugin.PERM_CHAT_DISABLE)) return true;
 
         return isOperatorOrAdmin(sender, senderUuid);
     }
@@ -63,7 +68,7 @@ abstract class ChatDisableBaseCommand extends CommandBase {
             } catch (Throwable ignored) { }
         }
 
-        for (String mn : new String[]{"getPlayer", "player", "asPlayer"}) {
+        for (String mn : new String[]{"getPlayerRef", "getPlayer", "player", "asPlayer"}) {
             try {
                 Method m = sender.getClass().getMethod(mn);
                 Object r = m.invoke(sender);
@@ -101,7 +106,7 @@ abstract class ChatDisableBaseCommand extends CommandBase {
         if (sender instanceof PlayerRef pr) return pr;
         if (sender == null) return null;
 
-        for (String mn : new String[]{"getPlayer", "player", "asPlayer"}) {
+        for (String mn : new String[]{"getPlayerRef", "getPlayer", "player", "asPlayer"}) {
             try {
                 Method m = sender.getClass().getMethod(mn);
                 Object r = m.invoke(sender);

@@ -12,7 +12,7 @@ public class ChatAdminCommand extends AbstractCommandCollection {
         this.addSubCommand(new ChatAdminRemoveCommand(plugin));
         this.addSubCommand(new ChatAdminListCommand(plugin));
 
-        // Permissão (se o build suportar)
-        LGChatCompat.requirePermissionNode(this, LocalGlobalChatPlugin.PERM_CHAT_ADMIN);
+        // Permissions are enforced in execute to keep console/op working across builds
+        LGChatCompat.relaxCommandPermissions(this);
     }
 }

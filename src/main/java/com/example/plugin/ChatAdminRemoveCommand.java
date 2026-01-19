@@ -20,7 +20,7 @@ public class ChatAdminRemoveCommand extends CommandBase {
         super("remove", "localglobalchat.commands.chatadmin.remove.desc");
         this.plugin = plugin;
 
-        LGChatCompat.requirePermissionNode(this, LocalGlobalChatPlugin.PERM_CHAT_ADMIN);
+        LGChatCompat.relaxCommandPermissions(this);
     }
 
     @Override
